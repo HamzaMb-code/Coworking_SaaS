@@ -19,6 +19,17 @@ export interface Workspace {
   pivot?: { role: "owner" | "staff" | "customer" };
 }
 
+export interface WorkspaceBankTransferDetails {
+  beneficiary_name: string;
+  bank_name: string;
+  account_identifier: string;
+}
+
+export interface WorkspaceBankTransferDetailsResponse {
+  configured: boolean;
+  details: WorkspaceBankTransferDetails | null;
+}
+
 export interface CreateWorkspaceData {
   name: string;
   slug: string;
@@ -29,6 +40,13 @@ export interface CreateWorkspaceData {
   email?: string;
   image?: File | null;
   remove_image?: boolean;
+}
+
+export function workspaceImageValidationError(file: File): string | null {
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowedTypes.includes(file.type)) return "Choose a JPG, PNG, or WebP image.";
+  if (file.size > 5 * 1024 * 1024) return "Workspace images must be 5 MB or smaller.";
+  return null;
 }
 
 interface WorkspacesResponse {
@@ -51,9 +69,11 @@ export interface WorkspaceSearch {
 
 export async function getWorkspaces(
   search: WorkspaceSearch = {},
+  signal?: AbortSignal,
 ): Promise<Workspace[]> {
   const response = await api.get<WorkspacesResponse>("/workspaces", {
     params: search,
+    signal,
   });
 
   return response.data.workspaces;
@@ -104,6 +124,18 @@ export async function updateWorkspace(
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data.workspace;
+}
+
+export async function getWorkspaceBankTransferDetails(workspaceId: number, bookingId?: number): Promise<WorkspaceBankTransferDetailsResponse> {
+  const response = await api.get<WorkspaceBankTransferDetailsResponse>(`/workspaces/${workspaceId}/bank-transfer-details`, {
+    params: bookingId ? { booking_id: bookingId } : undefined,
+  });
+  return response.data;
+}
+
+export async function updateWorkspaceBankTransferDetails(workspaceId: number, details: WorkspaceBankTransferDetails): Promise<WorkspaceBankTransferDetailsResponse> {
+  const response = await api.put<WorkspaceBankTransferDetailsResponse>(`/workspaces/${workspaceId}/bank-transfer-details`, details);
+  return response.data;
 }
 
 export async function deleteWorkspace(workspaceId: number): Promise<void> {

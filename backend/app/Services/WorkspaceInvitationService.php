@@ -19,6 +19,7 @@ class WorkspaceInvitationService
 {
     public function create(
         Workspace $workspace,
+        User $inviter,
         array $data
     ): WorkspaceInvitation {
         $alreadyMember = $workspace->members()
@@ -48,6 +49,7 @@ class WorkspaceInvitationService
 
         // Create the invitation
         $invitation = $workspace->invitations()->create([
+            'invited_by' => $inviter->id,
             'email' => $data['email'],
             'role' => $data['role'],
             'token' => Str::random(64),
@@ -145,7 +147,10 @@ public function decline(string $token, User $user): WorkspaceInvitation
             throw ValidationException::withMessages(['email' => 'This invitation was sent to a different email address.']);
         }
 
-        $invitation->update(['declined_at' => now()]);
+        $invitation->update([
+            'declined_at' => now(),
+            'responded_by' => $user->id,
+        ]);
 
         return $invitation->fresh('workspace');
     });
@@ -213,6 +218,7 @@ public function accept(
 
         $invitation->update([
             'accepted_at' => now(),
+            'responded_by' => $user->id,
         ]);
 
         return $member;

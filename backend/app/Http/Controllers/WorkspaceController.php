@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workspace;
+use App\Models\Booking;
+use App\Models\WorkspaceBankTransferDetail;
 use App\WorkspaceMemberRole;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -128,6 +130,51 @@ class WorkspaceController extends Controller
 
         return response()->json([
             'workspace' => $workspace->load('members'),
+        ]);
+    }
+
+    public function bankTransferDetails(Request $request, Workspace $workspace): JsonResponse
+    {
+        if (! Gate::allows('viewPayments', $workspace)) {
+            $validated = $request->validate(['booking_id' => ['required', 'integer', 'min:1']]);
+            $ownsBooking = Booking::query()->where('workspace_id', $workspace->id)
+                ->where('user_id', $request->user()->id)->whereKey($validated['booking_id'])->exists();
+            abort_unless($ownsBooking, 404);
+        }
+
+        $details = WorkspaceBankTransferDetail::query()->where('workspace_id', $workspace->id)->first();
+        return response()->json([
+            'configured' => $details !== null,
+            'details' => $details ? [
+                'beneficiary_name' => $details->beneficiary_name,
+                'bank_name' => $details->bank_name,
+                'account_identifier' => $details->account_identifier,
+            ] : null,
+        ]);
+    }
+
+    public function updateBankTransferDetails(Request $request, Workspace $workspace): JsonResponse
+    {
+        Gate::authorize('update', $workspace);
+        $validated = $request->validate([
+            'beneficiary_name' => ['required', 'string', 'max:150'],
+            'bank_name' => ['required', 'string', 'max:120'],
+            'account_identifier' => ['required', 'string', 'min:8', 'max:64', 'regex:/^[A-Za-z0-9 ]+$/'],
+        ]);
+
+        $details = WorkspaceBankTransferDetail::query()->updateOrCreate(
+            ['workspace_id' => $workspace->id],
+            $validated,
+        );
+
+        return response()->json([
+            'message' => 'Bank-transfer beneficiary details saved.',
+            'configured' => true,
+            'details' => [
+                'beneficiary_name' => $details->beneficiary_name,
+                'bank_name' => $details->bank_name,
+                'account_identifier' => $details->account_identifier,
+            ],
         ]);
     }
 

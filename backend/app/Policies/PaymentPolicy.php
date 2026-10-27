@@ -47,32 +47,27 @@ class PaymentPolicy
         return $payment->booking->user_id === $user->id;
     }
 
-    public function recordOfflinePayment(User $user, Payment $payment): bool
-    {
-        return $payment->booking->workspace->members()
-            ->where('user_id', $user->id)
-            ->whereIn('role', [WorkspaceMemberRole::OWNER, WorkspaceMemberRole::STAFF])
-            ->exists();
-    }
-
     public function update(
         User $user,
         Payment $payment
     ): bool {
-        return $payment->booking->workspace->members()
-            ->where('user_id', $user->id)
-            ->whereIn('role', [
-                WorkspaceMemberRole::OWNER,
-                WorkspaceMemberRole::STAFF,
-            ])
-            ->exists();
+        return $payment->booking->user_id === $user->id
+            && $payment->status === \App\PaymentStatus::PENDING
+            && $payment->payment_method === 'bank_transfer'
+            && $payment->verified_by === null;
+    }
+
+    public function delete(User $user, Payment $payment): bool
+    {
+        return $this->update($user, $payment);
     }
 
     public function markAsPaid(
         User $user,
         Payment $payment
     ): bool {
-        return $payment->booking->workspace->members()
+        return $payment->booking->user_id !== $user->id
+            && $payment->booking->workspace->members()
             ->where('user_id', $user->id)
             ->whereIn('role', [
                 WorkspaceMemberRole::OWNER,
@@ -85,7 +80,8 @@ class PaymentPolicy
         User $user,
         Payment $payment
     ): bool {
-        return $payment->booking->workspace->members()
+        return $payment->booking->user_id !== $user->id
+            && $payment->booking->workspace->members()
             ->where('user_id', $user->id)
             ->whereIn('role', [
                 WorkspaceMemberRole::OWNER,

@@ -14,6 +14,7 @@ class UpdateBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'payment_method' => ['prohibited'],
             'resource_id' => [
                 'sometimes',
                 'integer',
@@ -23,6 +24,7 @@ class UpdateBookingRequest extends FormRequest
             'start_at' => [
                 'sometimes',
                 'date',
+                'after:now',
             ],
 
             'end_at' => [

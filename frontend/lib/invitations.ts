@@ -10,7 +10,18 @@ export interface WorkspaceInvitation {
   workspace?: { id: number; name: string; city?: string; address?: string };
 }
 
+export interface WorkspaceInvitationResponse extends WorkspaceInvitation {
+  accepted_at: string | null;
+  declined_at: string | null;
+  response_read_at: string | null;
+  responder?: { id: number; name: string; email: string } | null;
+}
+
 interface InvitationsResponse { invitations: WorkspaceInvitation[]; }
+interface WorkspaceInvitationActivityResponse {
+  invitations: WorkspaceInvitation[];
+  responses: WorkspaceInvitationResponse[];
+}
 interface InvitationResponse { message?: string; invitation: WorkspaceInvitation; }
 export interface InvitationPreview { workspace: string; workspace_id: number; email: string; role: "staff" | "customer"; expires_at: string; }
 interface PreviewResponse { invitation: InvitationPreview; }
@@ -21,8 +32,21 @@ export async function sendWorkspaceInvitation(workspaceId: number, data: Pick<Wo
 }
 
 export async function getWorkspaceInvitations(workspaceId: number): Promise<WorkspaceInvitation[]> {
-  const response = await api.get<InvitationsResponse>(`/workspaces/${workspaceId}/invitations`);
+  const response = await api.get<WorkspaceInvitationActivityResponse>(`/workspaces/${workspaceId}/invitations`);
   return response.data.invitations;
+}
+
+export async function getWorkspaceInvitationActivity(workspaceId: number): Promise<WorkspaceInvitationActivityResponse> {
+  const response = await api.get<WorkspaceInvitationActivityResponse>(`/workspaces/${workspaceId}/invitations`);
+  return response.data;
+}
+
+export async function markWorkspaceInvitationResponsesRead(workspaceId: number): Promise<void> {
+  await api.post(`/workspaces/${workspaceId}/invitations/responses/read`);
+}
+
+export async function dismissWorkspaceInvitationResponse(workspaceId: number, invitationId: number): Promise<void> {
+  await api.delete(`/workspaces/${workspaceId}/invitations/${invitationId}/response`);
 }
 
 export async function getMyInvitations(): Promise<WorkspaceInvitation[]> {

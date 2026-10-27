@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreWorkspaceInvitationRequest;
 use App\Models\Workspace;
+use App\Models\WorkspaceInvitation;
 use App\Services\WorkspaceInvitationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
@@ -25,6 +26,7 @@ class WorkspaceInvitationController extends Controller
 
         $invitation = $this->workspaceInvitationService->create(
             $workspace,
+            $request->user(),
             $request->validated()
         );
 
@@ -59,7 +61,71 @@ class WorkspaceInvitationController extends Controller
             ->latest()
             ->get();
 
-        return response()->json(['invitations' => $invitations]);
+        $responses = $workspace->invitations()
+            ->with('responder:id,name,email')
+            ->where('invited_by', request()->user()->id)
+            ->whereNull('response_dismissed_at')
+            ->where(function ($query) {
+                $query->whereNotNull('accepted_at')
+                    ->orWhereNotNull('declined_at');
+            })
+            ->latest('updated_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'invitations' => $invitations,
+            'responses' => $responses,
+        ]);
+    }
+
+    public function markResponsesRead(Workspace $workspace): JsonResponse
+    {
+        Gate::authorize(
+            'create',
+            [\App\Models\WorkspaceInvitation::class, $workspace]
+        );
+
+        $updated = $workspace->invitations()
+            ->where('invited_by', request()->user()->id)
+            ->whereNull('response_dismissed_at')
+            ->whereNull('response_read_at')
+            ->where(function ($query) {
+                $query->whereNotNull('accepted_at')
+                    ->orWhereNotNull('declined_at');
+            })
+            ->update(['response_read_at' => now()]);
+
+        return response()->json([
+            'message' => 'Invitation responses marked as read.',
+            'updated_count' => $updated,
+        ]);
+    }
+
+    public function dismissResponse(Workspace $workspace, int $invitation): JsonResponse
+    {
+        Gate::authorize(
+            'create',
+            [WorkspaceInvitation::class, $workspace]
+        );
+
+        $updated = $workspace->invitations()
+            ->whereKey($invitation)
+            ->where('invited_by', request()->user()->id)
+            ->where(function ($query) {
+                $query->whereNotNull('accepted_at')
+                    ->orWhereNotNull('declined_at');
+            })
+            ->update([
+                'response_dismissed_at' => now(),
+                'response_read_at' => now(),
+            ]);
+
+        if (!$updated) {
+            return response()->json(['message' => 'Invitation response not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Invitation response removed from this list.']);
     }
 
 

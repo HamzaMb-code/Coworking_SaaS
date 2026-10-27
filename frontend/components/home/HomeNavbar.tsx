@@ -22,7 +22,7 @@ export default function HomeNavbar() {
         </Link>
         <nav className={`hidden items-center gap-9 text-sm font-medium transition-colors md:flex ${scrolled ? "text-[#26332e]" : "text-white/85"}`}>
           <Link href="#home" className={scrolled ? "text-[#102d34]" : "text-white"}>Home</Link>
-          <Link href="/workspaces" className="transition hover:text-[#176b4d]">Workspaces</Link>
+          <Link href="/discover" className="transition hover:text-[#176b4d]">Workspaces</Link>
           <Link href="#about" className="transition hover:text-[#176b4d]">About</Link>
           <Link href="#how-it-works" className="transition hover:text-[#176b4d]">How it works</Link>
         </nav>

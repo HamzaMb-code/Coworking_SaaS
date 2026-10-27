@@ -76,6 +76,27 @@ class BookingPolicy
             ->exists();
     }
 
+    public function recordCashReceived(User $user, Booking $booking): bool
+    {
+        return $booking->workspace->members()
+            ->where('user_id', $user->id)
+            ->whereIn('role', [WorkspaceMemberRole::OWNER, WorkspaceMemberRole::STAFF])
+            ->exists();
+    }
+
+    public function reject(
+        User $user,
+        Booking $booking
+    ): bool {
+        return $booking->workspace->members()
+            ->where('user_id', $user->id)
+            ->whereIn('role', [
+                WorkspaceMemberRole::OWNER,
+                WorkspaceMemberRole::STAFF,
+            ])
+            ->exists();
+    }
+
     public function checkIn(
         User $user,
         Booking $booking
@@ -89,7 +110,7 @@ class BookingPolicy
             ->exists();
     }
 
-    public function complete(
+    public function checkOut(
         User $user,
         Booking $booking
     ): bool {

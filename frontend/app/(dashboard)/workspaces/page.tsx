@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Building2, Heart, MapPin, Search, Users } from "lucide-react";
+import { Heart, MapPin, Search, Users } from "lucide-react";
 import { addFavorite, getMyFavorites, getWorkspaces, removeFavorite, type Workspace, type WorkspaceSearch } from "@/lib/workspaces";
+import WorkspaceImage from "@/components/workspaces/WorkspaceImage";
 
-const resourceTypes = ["desk", "meeting_room", "private_office"];
+const resourceTypes = ["desk", "meeting_room", "private_office", "event_space"];
 const readableType = (type: string) => type.replaceAll("_", " ");
 
 export default function WorkspacesPage() {
@@ -70,7 +71,7 @@ export default function WorkspacesPage() {
 
   return (
     <div className="space-y-8">
-      <section className="rounded-2xl border border-[#dce7de] bg-white p-5 shadow-sm sm:p-7">
+      <section className="card-surface p-5 sm:p-7">
         <p className="text-sm font-semibold text-[#176b4d]">On-demand workspaces</p>
         <h1 className="mt-2 text-3xl font-bold sm:text-4xl">Find space that works for you</h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">Book a desk, meeting room, or private office by the hour, day, or month.</p>
@@ -100,13 +101,13 @@ export default function WorkspacesPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {workspaces.map((workspace) => (
-              <article key={workspace.id} className="flex min-h-64 flex-col rounded-2xl border border-[#dce7de] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#b9d3c0] hover:shadow-md">
-                <div className="flex items-start justify-between gap-3"><Building2 className="h-5 w-5 text-[#176b4d]" aria-hidden="true" /><button type="button" onClick={() => void toggleFavorite(workspace.id)} aria-label={favoriteIds.includes(workspace.id) ? `Remove ${workspace.name} from favorites` : `Save ${workspace.name} to favorites`} className="grid size-9 place-items-center rounded-full border border-[#d6e5da] text-[#176b4d] transition hover:border-[#176b4d] hover:bg-[#eaf3ed]"><Heart className={`size-4 ${favoriteIds.includes(workspace.id) ? "fill-current" : ""}`} /></button></div>
-                <h3 className="mt-6 text-lg font-semibold">{workspace.name}</h3>
-                <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4" />{workspace.city}, {workspace.address}</p>
-                {workspace.description && <p className="mt-4 line-clamp-2 text-sm text-muted-foreground">{workspace.description}</p>}
-                <p className="mt-auto flex items-center gap-2 pt-5 text-sm text-muted-foreground"><Users className="h-4 w-4" />{workspace.available_resources_count ?? 0} bookable spaces</p>
-                <Link href={`/workspaces/${workspace.id}`} className="mt-5 block rounded-md border border-[#cbdccf] px-4 py-2 text-center text-sm font-semibold text-[#176b4d] transition hover:border-[#176b4d] hover:bg-[#176b4d] hover:text-white">View availability</Link>
+              <article key={workspace.id} className="card-surface flex min-h-64 flex-col overflow-hidden">
+                <div className="relative aspect-[16/9] bg-[#e8eee8]"><WorkspaceImage imageUrl={workspace.image_url} alt={`${workspace.name} workspace`} className="relative h-full w-full" sizes="(max-width: 768px) 100vw, 33vw" /><button type="button" onClick={() => void toggleFavorite(workspace.id)} aria-label={favoriteIds.includes(workspace.id) ? `Remove ${workspace.name} from favorites` : `Save ${workspace.name} to favorites`} className="absolute right-3 top-3 grid size-9 place-items-center rounded-full border border-white/70 bg-white/95 text-[#176b4d] transition hover:border-[#176b4d] hover:bg-[#eaf3ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#176b4d]"><Heart className={`size-4 ${favoriteIds.includes(workspace.id) ? "fill-current" : ""}`} /></button></div>
+                <div className="flex flex-1 flex-col p-4 sm:p-5"><h3 className="text-lg font-semibold">{workspace.name}</h3>
+                <p className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4" />{workspace.city}, {workspace.address}</p>
+                {workspace.description && <p className="mt-3 line-clamp-2 text-sm leading-5 text-muted-foreground">{workspace.description}</p>}
+                <p className="mt-auto flex items-center gap-2 pt-4 text-sm text-muted-foreground"><Users className="h-4 w-4" />{workspace.available_resources_count ?? 0} bookable spaces</p>
+                <Link href={`/workspaces/${workspace.id}`} className="mt-4 block rounded-lg border border-[#cbdccf] px-4 py-2.5 text-center text-sm font-semibold text-[#176b4d] transition hover:border-[#176b4d] hover:bg-[#176b4d] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#176b4d]">View availability</Link></div>
               </article>
             ))}
           </div>

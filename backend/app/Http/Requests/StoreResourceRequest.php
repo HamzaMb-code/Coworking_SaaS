@@ -29,6 +29,13 @@ class StoreResourceRequest extends FormRequest
                 'string',
             ],
 
+            'image' => [
+                'nullable',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:5120',
+            ],
+
             'type' => [
                 'required',
                 Rule::enum(ResourceType::class),

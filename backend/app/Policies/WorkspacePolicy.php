@@ -38,6 +38,14 @@ class WorkspacePolicy
             ->exists();
     }
 
+    public function viewCustomers(User $user, Workspace $workspace): bool
+    {
+        return $workspace->members()
+            ->where('user_id', $user->id)
+            ->whereIn('role', [WorkspaceMemberRole::OWNER, WorkspaceMemberRole::STAFF])
+            ->exists();
+    }
+
     public function book(User $user, Workspace $workspace): bool
     {
         return $workspace->status->value === 'active';
@@ -70,6 +78,14 @@ class WorkspacePolicy
                 WorkspaceMemberRole::OWNER,
                 WorkspaceMemberRole::STAFF,
             ])
+            ->exists();
+    }
+
+    public function viewPayments(User $user, Workspace $workspace): bool
+    {
+        return $workspace->members()
+            ->where('user_id', $user->id)
+            ->whereIn('role', [WorkspaceMemberRole::OWNER, WorkspaceMemberRole::STAFF])
             ->exists();
     }
 }

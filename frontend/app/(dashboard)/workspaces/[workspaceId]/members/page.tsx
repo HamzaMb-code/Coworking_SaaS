@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import axios from "axios";
+import { X } from "lucide-react";
 
 import {
   deleteMember,
@@ -10,7 +11,7 @@ import {
   updateMember,
   type WorkspaceMember,
 } from "@/lib/members";
-import { getWorkspaceInvitations, sendWorkspaceInvitation, type WorkspaceInvitation } from "@/lib/invitations";
+import { dismissWorkspaceInvitationResponse, getWorkspaceInvitationActivity, markWorkspaceInvitationResponsesRead, sendWorkspaceInvitation, type WorkspaceInvitation, type WorkspaceInvitationResponse } from "@/lib/invitations";
 import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export default function MembersPage() {
@@ -21,6 +22,8 @@ export default function MembersPage() {
 
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
+  const [responses, setResponses] = useState<WorkspaceInvitationResponse[]>([]);
+  const [dismissingResponseId, setDismissingResponseId] = useState<number | null>(null);
 
   const [showForm, setShowForm] = useState(false);
 
@@ -36,29 +39,55 @@ export default function MembersPage() {
   const [formMessage, setFormMessage] = useState("");
   const [emailDeliveryFailed, setEmailDeliveryFailed] = useState(false);
 
+  const dismissResponse = async (responseId: number) => {
+    try {
+      setDismissingResponseId(responseId);
+      await dismissWorkspaceInvitationResponse(workspaceId, responseId);
+      setResponses((current) => current.filter((response) => response.id !== responseId));
+    } catch (error: unknown) {
+      setError(axios.isAxiosError(error)
+        ? error.response?.data?.message ?? "Could not remove this invitation response."
+        : "Could not remove this invitation response.");
+    } finally {
+      setDismissingResponseId(null);
+    }
+  };
+
   /*
    * Load members and users
    */
   useEffect(() => {
+    let active = true;
     const loadData = async () => {
       if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
         setError("Invalid workspace.");
-        setLoading(false);
+        if (active) setLoading(false);
         return;
       }
 
       try {
-        setLoading(true);
         setError("");
 
-        const [membersData, invitationsData] = await Promise.all([
+        const [membersData, invitationActivity] = await Promise.all([
           getMembers(workspaceId),
-          getWorkspaceInvitations(workspaceId),
+          getWorkspaceInvitationActivity(workspaceId),
         ]);
 
+        if (!active) return;
         setMembers(membersData);
-        setInvitations(invitationsData);
+        setInvitations(invitationActivity.invitations);
+        setResponses(invitationActivity.responses);
+        const unreadResponses = invitationActivity.responses.filter((response) => !response.response_read_at);
+        if (unreadResponses.length > 0) {
+          void markWorkspaceInvitationResponsesRead(workspaceId).catch(() => undefined);
+        }
+        window.dispatchEvent(new CustomEvent("workspace-invitation-responses-viewed", {
+          detail: unreadResponses.map((response) =>
+            `invitation-response:${response.id}:${response.accepted_at ?? response.declined_at}`,
+          ),
+        }));
       } catch (error: unknown) {
+        if (!active) return;
         if (axios.isAxiosError(error)) {
           setError(
             error.response?.data?.message ??
@@ -68,11 +97,19 @@ export default function MembersPage() {
           setError("Something went wrong.");
         }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
-    loadData();
+    void loadData();
+    const interval = window.setInterval(() => void loadData(), 30_000);
+    const onFocus = () => void loadData();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [workspaceId]);
 
   // Invite by email so the invited person can choose whether to join.
@@ -325,6 +362,17 @@ export default function MembersPage() {
             </form>
         </div>
       )}
+
+      {responses.length > 0 && <section>
+        <div className="mb-4"><h2 className="text-lg font-semibold">Invitation responses</h2><p className="text-sm text-muted-foreground">See who accepted or declined your workspace invitation.</p></div>
+        <div className="divide-y overflow-hidden rounded-xl border border-[#dce7de] bg-white">{responses.map((response) => {
+          const accepted = Boolean(response.accepted_at);
+          return <article key={`${response.id}-${response.accepted_at ?? response.declined_at}`} className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div><p className="font-medium">{response.responder?.name ?? response.email}</p><p className="mt-1 text-sm text-muted-foreground">{response.responder?.email ?? response.email} · {response.role}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(response.accepted_at ?? response.declined_at ?? response.expires_at).toLocaleString()}</p></div>
+            <div className="flex items-center gap-3"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${accepted ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>{accepted ? "Accepted" : "Declined"}</span><button type="button" aria-label="Remove invitation response" title="Remove response" disabled={dismissingResponseId === response.id} onClick={() => void dismissResponse(response.id)} className="grid size-9 place-items-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:cursor-wait disabled:opacity-50"><X className="size-4" /></button></div>
+          </article>;
+        })}</div>
+      </section>}
 
       <section>
         <div className="mb-4"><h2 className="text-lg font-semibold">Pending invitations</h2><p className="text-sm text-muted-foreground">Invitees need to accept before they become workspace members.</p></div>

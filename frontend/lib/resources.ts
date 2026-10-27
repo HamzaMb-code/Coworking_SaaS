@@ -3,12 +3,15 @@ import api from "@/lib/api";
 export interface Resource {
   id: number;
   name: string;
-  type: string;
+  type: ResourceType;
+  image_url: string | null;
   capacity: number;
   price: number;
   pricing_unit: string;
   status: string;
 }
+
+export type ResourceType = "desk" | "meeting_room" | "private_office" | "event_space";
 
 export interface CreateResourceData {
   name: string;
@@ -17,6 +20,8 @@ export interface CreateResourceData {
   price: number;
   pricing_unit: string;
   status?: string;
+  image?: File | null;
+  remove_image?: boolean;
 }
 
 interface ResourcesResponse {
@@ -44,7 +49,8 @@ export async function createResource(
 ): Promise<Resource> {
   const response = await api.post<ResourceResponse>(
     `/workspaces/${workspaceId}/resources`,
-    data,
+    resourceFormData(data),
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
 
   return response.data.resource;
@@ -55,12 +61,25 @@ export async function updateResource(
   resourceId: number,
   data: Partial<CreateResourceData>,
 ): Promise<Resource> {
-  const response = await api.put<ResourceResponse>(
+  const body = resourceFormData(data);
+  body.append("_method", "PUT");
+  const response = await api.post<ResourceResponse>(
     `/workspaces/${workspaceId}/resources/${resourceId}`,
-    data,
+    body,
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
 
   return response.data.resource;
+}
+
+function resourceFormData(data: Partial<CreateResourceData>): FormData {
+  const body = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    if (key === "image" && !(value instanceof File)) return;
+    body.append(key, value instanceof File ? value : typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+  });
+  return body;
 }
 
 export async function deleteResource(

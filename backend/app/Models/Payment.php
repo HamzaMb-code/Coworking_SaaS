@@ -18,6 +18,19 @@ class Payment extends Model
         'payment_method',
         'transaction_reference',
         'paid_at',
+        'payment_date',
+        'submitted_at',
+        'bank_name',
+        'proof_path',
+        'verified_by',
+        'verified_at',
+        'rejection_reason',
+        'receipt_number',
+        'receipt_path',
+        'idempotency_key',
+        'refunded_at',
+        'refunded_by',
+        'refund_reference',
     ];
 
     protected function casts(): array
@@ -26,11 +39,25 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'status' => PaymentStatus::class,
             'paid_at' => 'datetime',
+            'payment_date' => 'date',
+            'submitted_at' => 'datetime',
+            'verified_at' => 'datetime',
+            'refunded_at' => 'datetime',
         ];
     }
 
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
+    }
+
+    public function verifier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function refundVerifier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'refunded_by');
     }
 }

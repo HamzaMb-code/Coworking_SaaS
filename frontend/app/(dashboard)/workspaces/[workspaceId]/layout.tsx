@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
+import { UnreadCountBadge, useUnreadCounts, type UnreadCategory } from "@/components/dashboard/UnreadBadgeProvider";
 
 export default function WorkspaceLayout({
   children,
@@ -10,6 +11,7 @@ export default function WorkspaceLayout({
 }>) {
   const params = useParams();
   const pathname = usePathname();
+  const unread = useUnreadCounts();
 
   const workspaceId = Number(params.workspaceId);
 
@@ -29,6 +31,10 @@ export default function WorkspaceLayout({
     {
       label: "Bookings",
       href: `/workspaces/${workspaceId}/bookings`,
+    },
+    {
+      label: "Customers",
+      href: `/workspaces/${workspaceId}/customers`,
     },
     {
       label: "Payments",
@@ -58,18 +64,28 @@ export default function WorkspaceLayout({
               item.label === "Overview"
                 ? pathname === item.href
                 : pathname.startsWith(item.href);
+            const category: UnreadCategory | null = item.label === "Bookings"
+              ? "bookings"
+              : item.label === "Members"
+                ? "memberUpdates"
+              : item.label === "Payments"
+                ? "payments"
+                : null;
+            const count = category ? unread[category] : 0;
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-label={count ? `${item.label}, ${count} unread` : undefined}
                 className={
                   isActive
-                    ? "border-b-2 border-foreground px-1 pb-3 text-sm font-medium"
-                    : "px-1 pb-3 text-sm text-muted-foreground hover:text-foreground"
+                    ? "flex items-center gap-2 border-b-2 border-[#176b4d] px-1 pb-3 text-sm font-semibold text-[#176b4d]"
+                    : "flex items-center gap-2 px-1 pb-3 text-sm text-muted-foreground hover:text-[#176b4d]"
                 }
               >
                 {item.label}
+                <UnreadCountBadge count={count} />
               </Link>
             );
           })}

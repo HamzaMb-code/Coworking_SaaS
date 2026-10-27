@@ -59,6 +59,7 @@ class WorkspaceDeletionAndImagesTest extends TestCase
             'resource_id' => $resource->id,
             'start_at' => now()->addDays(3)->setTime(10, 0)->toDateTimeString(),
             'end_at' => now()->addDays(3)->setTime(11, 0)->toDateTimeString(),
+            'payment_method' => 'bank_transfer',
         ])->assertNotFound();
     }
 

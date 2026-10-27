@@ -30,6 +30,19 @@ class UpdateResourceRequest extends FormRequest
                 'string',
             ],
 
+            'image' => [
+                'sometimes',
+                'nullable',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:5120',
+            ],
+
+            'remove_image' => [
+                'sometimes',
+                'boolean',
+            ],
+
             'type' => [
                 'sometimes',
                 Rule::enum(ResourceType::class),

@@ -13,6 +13,8 @@ class WorkspaceInvitation extends Model
 
     protected $fillable = [
         'workspace_id',
+        'invited_by',
+        'responded_by',
         'email',
         'role',
         'token',
@@ -34,5 +36,15 @@ class WorkspaceInvitation extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    public function inviter(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'invited_by');
+    }
+
+    public function responder(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responded_by');
     }
 }

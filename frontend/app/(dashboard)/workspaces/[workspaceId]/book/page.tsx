@@ -8,6 +8,8 @@ import { ArrowLeft } from "lucide-react";
 import { createBooking } from "@/lib/bookings";
 import { getResources, type Resource } from "@/lib/resources";
 import { getWorkspace, type Workspace } from "@/lib/workspaces";
+import ResourceImage from "@/components/resources/ResourceImage";
+import DateTimePicker from "@/components/bookings/DateTimePicker";
 
 export default function BookWorkspacePage() {
   const params = useParams();
@@ -18,6 +20,7 @@ export default function BookWorkspacePage() {
   const [resourceId, setResourceId] = useState(searchParams.get("resource") ?? "");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"" | "bank_transfer" | "cash">("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -44,10 +47,10 @@ export default function BookWorkspacePage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!resourceId || !startAt || !endAt) { setError("Choose a space, start time, and end time."); return; }
+    if (!resourceId || !startAt || !endAt || !paymentMethod) { setError("Choose a space, booking period, and payment method."); return; }
     try {
       setSubmitting(true); setError(""); setSuccess("");
-      await createBooking(workspaceId, { resource_id: Number(resourceId), start_at: startAt, end_at: endAt });
+      await createBooking(workspaceId, { resource_id: Number(resourceId), start_at: startAt, end_at: endAt, payment_method: paymentMethod });
       setSuccess("Your reservation request has been submitted.");
     } catch (requestError: unknown) {
       const validationErrors = axios.isAxiosError(requestError) ? requestError.response?.data?.errors : undefined;
@@ -62,13 +65,17 @@ export default function BookWorkspacePage() {
 
   return <div className="mx-auto max-w-2xl space-y-7">
     <Link href={`/workspaces/${workspaceId}`} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Back to availability</Link>
-    <div><p className="text-sm text-muted-foreground">{workspace?.city}</p><h1 className="mt-1 text-3xl font-bold">Reserve at {workspace?.name}</h1><p className="mt-2 text-muted-foreground">Your reservation is held once the workspace confirms availability.</p></div>
     {success && <div role="status" className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-700">{success} <Link href="/bookings" className="font-medium underline">View my bookings</Link></div>}
     {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</div>}
     <form onSubmit={handleSubmit} className="space-y-5 border p-5">
       <div><label htmlFor="resource" className="text-sm font-medium">Space</label><select id="resource" value={resourceId} onChange={(event) => setResourceId(event.target.value)} required className="mt-2 h-11 w-full rounded-md border bg-background px-3 text-sm"><option value="">Select a space</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name} - {Number(resource.price).toFixed(2)} MAD/{resource.pricing_unit}</option>)}</select></div>
-      {selectedResource && <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">Up to {selectedResource.capacity} people · {Number(selectedResource.price).toFixed(2)} MAD per {selectedResource.pricing_unit}. {selectedResource.pricing_unit === "hour" ? "Hourly bookings are charged for the exact time reserved." : selectedResource.pricing_unit === "day" ? "Daily bookings count each calendar day used; a short booking still costs one day." : "Monthly bookings are billed in whole months, with partial months rounded up."} The workspace confirms your reservation request.</p>}
-      <div className="grid gap-5 sm:grid-cols-2"><div><label htmlFor="startAt" className="text-sm font-medium">Start</label><input id="startAt" type="datetime-local" value={startAt} onChange={(event) => setStartAt(event.target.value)} required className="mt-2 h-11 w-full rounded-md border bg-background px-3 text-sm" /></div><div><label htmlFor="endAt" className="text-sm font-medium">End</label><input id="endAt" type="datetime-local" value={endAt} onChange={(event) => setEndAt(event.target.value)} required className="mt-2 h-11 w-full rounded-md border bg-background px-3 text-sm" /></div></div>
+      {selectedResource && <div className="flex items-center gap-3 rounded-xl bg-muted/50 p-3"><ResourceImage imageUrl={selectedResource.image_url} type={selectedResource.type} alt={`${selectedResource.name} preview`} className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-lg" sizes="80px" /><p className="text-sm leading-6 text-muted-foreground">Up to {selectedResource.capacity} people · {Number(selectedResource.price).toFixed(2)} MAD per {selectedResource.pricing_unit}. {selectedResource.pricing_unit === "hour" ? "Hourly bookings are charged for the exact time reserved." : selectedResource.pricing_unit === "day" ? "Daily bookings count each calendar day used; a short booking still costs one day." : "Monthly bookings are billed in whole months, with partial months rounded up."} The workspace confirms your reservation request.</p></div>}
+      <div className="grid gap-5 sm:grid-cols-2"><DateTimePicker id="startAt" label="Start" value={startAt} onChange={setStartAt} required /><DateTimePicker id="endAt" label="End" value={endAt} onChange={setEndAt} required /></div>
+      <fieldset className="space-y-3">
+        <legend className="text-sm font-medium">How do you intend to pay? <span className="text-red-600">*</span></legend>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3"><input type="radio" name="payment_method" value="bank_transfer" required checked={paymentMethod === "bank_transfer"} onChange={() => setPaymentMethod("bank_transfer")} className="mt-1 accent-[#176b4d]"/><span><span className="block text-sm font-semibold">Bank transfer</span><span className="mt-1 block text-xs text-slate-500">Transfer the full amount and submit your payment declaration with proof for workspace verification.</span></span></label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3"><input type="radio" name="payment_method" value="cash" required checked={paymentMethod === "cash"} onChange={() => setPaymentMethod("cash")} className="mt-1 accent-[#176b4d]"/><span><span className="block text-sm font-semibold">Cash</span><span className="mt-1 block text-xs text-slate-500">Pay the full amount in person to authorized staff, who will verify your booking before receiving cash.</span></span></label>
+      </fieldset>
       <button type="submit" disabled={submitting || resources.length === 0} className="h-11 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{submitting ? "Submitting..." : "Request reservation"}</button>
     </form>
   </div>;
