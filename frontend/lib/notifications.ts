@@ -53,3 +53,12 @@ export async function markAllNotificationsRead(): Promise<number> {
   const response = await api.post<{ unread_count: number }>("/notifications/read-all");
   return response.data.unread_count;
 }
+
+export async function deleteNotification(notificationId: string): Promise<number> {
+  const response = await api.delete<{ unread_count: number }>(`/notifications/${encodeURIComponent(notificationId)}`);
+  return response.data.unread_count;
+}
+
+export async function deleteAllNotifications(): Promise<void> {
+  await api.delete("/notifications");
+}

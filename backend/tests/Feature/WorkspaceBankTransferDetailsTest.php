@@ -14,6 +14,8 @@ use App\ResourceStatus;
 use App\ResourceType;
 use App\WorkspaceMemberRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class WorkspaceBankTransferDetailsTest extends TestCase
@@ -73,6 +75,38 @@ class WorkspaceBankTransferDetailsTest extends TestCase
             ->assertNotFound();
         $otherCustomer = User::factory()->create();
         $this->actingAs($otherCustomer)->getJson($this->url().'?booking_id='.$this->booking->id)->assertNotFound();
+    }
+
+    public function test_setup_status_is_workspace_specific_and_never_returns_account_details(): void
+    {
+        $otherWorkspace = Workspace::factory()->create();
+        WorkspaceMember::create(['workspace_id' => $otherWorkspace->id, 'user_id' => $this->owner->id, 'role' => WorkspaceMemberRole::OWNER]);
+
+        $this->assertDatabaseMissing('workspace_bank_transfer_details', ['workspace_id' => $this->workspace->id]);
+        $this->actingAs($this->owner)->getJson($this->url().'?status_only=1')
+            ->assertOk()->assertJsonPath('configured', false)->assertJsonPath('details', null);
+
+        $payload = ['beneficiary_name' => 'Workspace SARL', 'bank_name' => 'CIH', 'account_identifier' => '007780000012345678901234'];
+        $this->actingAs($this->owner)->putJson($this->url(), $payload)->assertOk();
+
+        $this->actingAs($this->owner)->getJson($this->url().'?status_only=1')
+            ->assertOk()->assertJsonPath('configured', true)->assertJsonPath('details', null);
+        $this->actingAs($this->owner)->getJson("/api/workspaces/{$otherWorkspace->id}/bank-transfer-details?status_only=1")
+            ->assertOk()->assertJsonPath('configured', false)->assertJsonPath('details', null);
+    }
+
+    public function test_customer_cannot_start_bank_transfer_payment_when_workspace_has_no_details(): void
+    {
+        Storage::fake('local');
+        $this->actingAs($this->customer)->post("/api/workspaces/{$this->workspace->id}/bookings/{$this->booking->id}/payment", [
+            'payment_method' => 'bank_transfer',
+            'amount' => '100.00',
+            'payment_date' => now()->toDateString(),
+            'bank_name' => 'CIH',
+            'proof' => UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+
+        $this->assertDatabaseMissing('payments', ['booking_id' => $this->booking->id]);
     }
 
     public function test_only_workspace_owner_can_edit_and_fields_are_validated(): void

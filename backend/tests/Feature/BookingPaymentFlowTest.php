@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\Resource;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\WorkspaceBankTransferDetail;
 use App\Models\WorkspaceMember;
 use App\PaymentStatus;
 use App\PricingUnit;
@@ -42,6 +43,12 @@ class BookingPaymentFlowTest extends TestCase
         $this->workspace = Workspace::factory()->create();
         WorkspaceMember::create(['workspace_id' => $this->workspace->id, 'user_id' => $this->owner->id, 'role' => WorkspaceMemberRole::OWNER]);
         WorkspaceMember::create(['workspace_id' => $this->workspace->id, 'user_id' => $this->staff->id, 'role' => WorkspaceMemberRole::STAFF]);
+        WorkspaceBankTransferDetail::create([
+            'workspace_id' => $this->workspace->id,
+            'beneficiary_name' => 'Test Workspace',
+            'bank_name' => 'Test Bank',
+            'account_identifier' => 'AB12345678',
+        ]);
         $this->resource = Resource::factory()->create([
             'workspace_id' => $this->workspace->id,
             'price' => 100,
@@ -87,6 +94,19 @@ class BookingPaymentFlowTest extends TestCase
             ])->assertCreated()->assertJsonPath('booking.payment_method', $method);
             $this->assertDatabaseHas('bookings', ['id' => $response->json('booking.id'), 'payment_method' => $method]);
         }
+    }
+
+    public function test_bank_transfer_booking_is_blocked_without_workspace_details_while_cash_remains_available(): void
+    {
+        WorkspaceBankTransferDetail::query()->where('workspace_id', $this->workspace->id)->delete();
+
+        $this->actingAs($this->customer)->postJson($this->bookingUrl(), [
+            ...$this->bookingData(), 'payment_method' => 'bank_transfer',
+        ])->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+
+        $this->actingAs($this->customer)->postJson($this->bookingUrl(), [
+            ...$this->bookingData(), 'payment_method' => 'cash',
+        ])->assertCreated()->assertJsonPath('booking.payment_method', 'cash');
     }
 
     public function test_booking_method_cannot_be_changed_by_an_ordinary_booking_update(): void

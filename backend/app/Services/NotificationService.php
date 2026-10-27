@@ -258,6 +258,6 @@ class NotificationService
 
     private function staffBookingUrl(Booking $booking): string
     {
-        return "/workspaces/{$booking->workspace_id}/bookings/today?bookingId={$booking->id}";
+        return "/workspaces/{$booking->workspace_id}/bookings";
     }
 }

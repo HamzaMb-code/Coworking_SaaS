@@ -22,6 +22,8 @@ import {
   type WorkspaceCustomer,
 } from "@/lib/bookings";
 import { getResources, type Resource } from "@/lib/resources";
+import { getWorkspaceBankTransferSetupStatus } from "@/lib/workspaces";
+import { markPendingBookingAlertSeen } from "@/lib/booking-alerts";
 import ResourceImage from "@/components/resources/ResourceImage";
 import DateTimePicker from "@/components/bookings/DateTimePicker";
 import { BookingListControls, BookingListPagination, type BookingListFilter } from "@/components/bookings/BookingListControls";
@@ -43,6 +45,7 @@ export default function BookingsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [customerId, setCustomerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"" | "bank_transfer" | "cash">("");
+  const [bankTransferSetup, setBankTransferSetup] = useState<{ workspaceId: number; configured: boolean } | null>(null);
   const [quote, setQuote] = useState<BookingQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
 
@@ -95,6 +98,10 @@ export default function BookingsPage() {
   }, [workspaceId, bookingFilter, bookingPage]);
 
   useEffect(() => {
+    markPendingBookingAlertSeen(workspaceId);
+  }, [workspaceId]);
+
+  useEffect(() => {
     const requestTimer = window.setTimeout(() => void loadData(false), bookingFilter.search ? 250 : 0);
     const refreshTimer = window.setInterval(() => void loadData(false), 60_000);
     const handleFocus = () => void loadData(false);
@@ -105,6 +112,17 @@ export default function BookingsPage() {
       window.removeEventListener("focus", handleFocus);
     };
   }, [loadData, bookingFilter.search]);
+  useEffect(() => {
+    let active = true;
+    void getWorkspaceBankTransferSetupStatus(workspaceId)
+      .then((configured) => {
+        if (!active) return;
+        setBankTransferSetup({ workspaceId, configured });
+        if (!configured) setPaymentMethod((current) => current === "bank_transfer" ? "" : current);
+      })
+      .catch(() => { if (active) setBankTransferSetup({ workspaceId, configured: false }); });
+    return () => { active = false; };
+  }, [workspaceId]);
   useEffect(() => {
     const updateTime = () => setCurrentTime(Date.now());
     updateTime();
@@ -148,6 +166,10 @@ export default function BookingsPage() {
 
     if (!customerId || !resourceId || !startAt || !endAt || !paymentMethod) {
       setError("Choose a customer, resource, booking period, and payment method.");
+      return;
+    }
+    if (paymentMethod === "bank_transfer" && (bankTransferSetup?.workspaceId !== workspaceId || !bankTransferSetup.configured)) {
+      setError("Bank transfer is unavailable until this workspace configures valid beneficiary details. Choose cash or update the workspace Settings first.");
       return;
     }
 
@@ -401,9 +423,9 @@ export default function BookingsPage() {
           <div>
             <label htmlFor="payment-method" className="text-sm font-medium">Intended payment method</label>
             <select id="payment-method" required value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as typeof paymentMethod)} className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm">
-              <option value="">Choose a method</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option>
+              <option value="">Choose a method</option><option value="bank_transfer" disabled={bankTransferSetup?.workspaceId !== workspaceId || !bankTransferSetup.configured}>Bank transfer{bankTransferSetup?.workspaceId === workspaceId && !bankTransferSetup.configured ? " — setup required" : ""}</option><option value="cash">Cash</option>
             </select>
-            <p className="mt-1 text-xs text-slate-500">Bank transfer requires full payment proof for verification; cash is recorded by authorized staff after receiving the full amount.</p>
+            <p className="mt-1 text-xs text-slate-500">{bankTransferSetup?.workspaceId !== workspaceId ? "Checking bank-transfer setup… Cash remains available." : !bankTransferSetup.configured ? "Bank transfer is unavailable until valid beneficiary details are saved in this workspace’s Settings. Cash remains available." : "Bank transfer requires full payment proof for verification; cash is recorded by authorized staff after receiving the full amount."}</p>
           </div>
           <div className="md:col-span-2">
             <label

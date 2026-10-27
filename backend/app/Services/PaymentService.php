@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\CashPaymentReconciliationCase;
 use App\Models\Payment;
 use App\Models\Resource;
+use App\Models\WorkspaceBankTransferDetail;
 use App\PaymentStatus;
 use App\ResourceStatus;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,10 @@ class PaymentService
             $this->assertNewPaymentWithinDeadline($lockedBooking);
             if ($lockedBooking->payment_method !== null && $lockedBooking->payment_method !== $data['payment_method']) {
                 throw ValidationException::withMessages(['payment_method' => 'This booking is reserved for '.str_replace('_', ' ', $lockedBooking->payment_method).'. The payment method cannot be changed after booking.']);
+            }
+            if ($data['payment_method'] === 'bank_transfer'
+                && !WorkspaceBankTransferDetail::isConfiguredForWorkspace($lockedBooking->workspace_id)) {
+                throw ValidationException::withMessages(['payment_method' => 'Bank transfer is unavailable because this workspace has not configured valid beneficiary details. Contact the workspace before sending money.']);
             }
             $summary = $this->lockedPaymentSummary($lockedBooking);
             $amount = round((float) $data['amount'], 2);

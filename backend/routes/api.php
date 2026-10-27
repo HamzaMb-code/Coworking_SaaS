@@ -30,7 +30,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications', [NotificationController::class, 'deleteAll']);
     Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+    Route::delete('/notifications/{notification}', [NotificationController::class, 'delete']);
 
     Route::apiResource('workspaces', WorkspaceController::class)->except(['index']);
     Route::get('my-workspaces', [WorkspaceController::class, 'mine']);

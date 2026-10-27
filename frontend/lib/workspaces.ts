@@ -133,6 +133,13 @@ export async function getWorkspaceBankTransferDetails(workspaceId: number, booki
   return response.data;
 }
 
+export async function getWorkspaceBankTransferSetupStatus(workspaceId: number): Promise<boolean> {
+  const response = await api.get<WorkspaceBankTransferDetailsResponse>(`/workspaces/${workspaceId}/bank-transfer-details`, {
+    params: { status_only: true },
+  });
+  return response.data.configured;
+}
+
 export async function updateWorkspaceBankTransferDetails(workspaceId: number, details: WorkspaceBankTransferDetails): Promise<WorkspaceBankTransferDetailsResponse> {
   const response = await api.put<WorkspaceBankTransferDetailsResponse>(`/workspaces/${workspaceId}/bank-transfer-details`, details);
   return response.data;

@@ -63,6 +63,28 @@ class NotificationController extends Controller
         ]);
     }
 
+    public function delete(Request $request, string $notification): JsonResponse
+    {
+        $ownedNotification = $request->user()->notifications()->whereKey($notification)->firstOrFail();
+        $ownedNotification->delete();
+
+        return response()->json([
+            'message' => 'Notification deleted.',
+            'unread_count' => $request->user()->unreadNotifications()->count(),
+        ]);
+    }
+
+    public function deleteAll(Request $request): JsonResponse
+    {
+        $deleted = $request->user()->notifications()->delete();
+
+        return response()->json([
+            'message' => 'Notifications deleted.',
+            'deleted_count' => $deleted,
+            'unread_count' => 0,
+        ]);
+    }
+
     /** @return array<string, mixed> */
     private function serialize(object $notification): array
     {

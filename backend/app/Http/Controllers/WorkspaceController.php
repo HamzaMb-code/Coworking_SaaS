@@ -135,7 +135,17 @@ class WorkspaceController extends Controller
 
     public function bankTransferDetails(Request $request, Workspace $workspace): JsonResponse
     {
-        if (! Gate::allows('viewPayments', $workspace)) {
+        $canViewPayments = Gate::allows('viewPayments', $workspace);
+        $statusOnly = $request->boolean('status_only');
+        if ($statusOnly && !$canViewPayments) {
+            Gate::authorize('view', $workspace);
+            return response()->json([
+                'configured' => WorkspaceBankTransferDetail::isConfiguredForWorkspace($workspace->id),
+                'details' => null,
+            ]);
+        }
+
+        if (! $canViewPayments) {
             $validated = $request->validate(['booking_id' => ['required', 'integer', 'min:1']]);
             $ownsBooking = Booking::query()->where('workspace_id', $workspace->id)
                 ->where('user_id', $request->user()->id)->whereKey($validated['booking_id'])->exists();
@@ -143,9 +153,14 @@ class WorkspaceController extends Controller
         }
 
         $details = WorkspaceBankTransferDetail::query()->where('workspace_id', $workspace->id)->first();
+        $configured = $details !== null && WorkspaceBankTransferDetail::isConfiguredForWorkspace($workspace->id);
+        if ($statusOnly) {
+            return response()->json(['configured' => $configured, 'details' => null]);
+        }
+
         return response()->json([
-            'configured' => $details !== null,
-            'details' => $details ? [
+            'configured' => $configured,
+            'details' => $configured && $details ? [
                 'beneficiary_name' => $details->beneficiary_name,
                 'bank_name' => $details->bank_name,
                 'account_identifier' => $details->account_identifier,

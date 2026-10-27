@@ -11,6 +11,7 @@ use App\Models\Booking;
 use App\Models\Resource;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\WorkspaceBankTransferDetail;
 use App\ResourceStatus;
 use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -28,6 +29,13 @@ class BookingService
         array $data
     ): Booking {
         $booking = DB::transaction(function () use ($user, $workspace, $data) {
+            if (($data['payment_method'] ?? null) === 'bank_transfer'
+                && !WorkspaceBankTransferDetail::isConfiguredForWorkspace($workspace->id)) {
+                throw ValidationException::withMessages([
+                    'payment_method' => 'Bank transfer is unavailable until this workspace configures valid beneficiary details. Choose cash or contact the workspace.',
+                ]);
+            }
+
             $quote = $this->quote($workspace, $data, lockResource: true);
 
             return Booking::create([

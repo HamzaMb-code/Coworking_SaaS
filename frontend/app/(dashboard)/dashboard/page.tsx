@@ -13,7 +13,8 @@ import { getBookings, getMyBookings, type Booking } from "@/lib/bookings";
 import { getDashboard, type DashboardData } from "@/lib/dashboard";
 import { getMyPayments, type Payment } from "@/lib/payments";
 import { getResources, type Resource } from "@/lib/resources";
-import { getMyFavorites, getMyWorkspaces, type Workspace } from "@/lib/workspaces";
+import { getPendingBookingAlertSeenAt } from "@/lib/booking-alerts";
+import { getMyFavorites, getMyWorkspaces, getWorkspaceBankTransferSetupStatus, type Workspace } from "@/lib/workspaces";
 import ResourceImage from "@/components/resources/ResourceImage";
 
 type Role = "customer" | "owner" | "staff";
@@ -34,6 +35,19 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [pendingBookingAlertSeenAt, setPendingBookingAlertSeenAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    const activeWorkspaceId = requestedWorkspaceId || workspaces[0]?.id || 0;
+    const syncSeenAt = (event?: Event) => {
+      const detail = (event as CustomEvent<{ workspaceId: number; seenAt: string }> | undefined)?.detail;
+      if (detail && detail.workspaceId !== activeWorkspaceId) return;
+      setPendingBookingAlertSeenAt(getPendingBookingAlertSeenAt(activeWorkspaceId));
+    };
+    syncSeenAt();
+    window.addEventListener("pending-booking-alert-seen", syncSeenAt);
+    return () => window.removeEventListener("pending-booking-alert-seen", syncSeenAt);
+  }, [requestedWorkspaceId, workspaces]);
 
   useEffect(() => {
     let alive = true;
@@ -94,7 +108,7 @@ export default function DashboardPage() {
 
   return <div className="mx-auto max-w-7xl space-y-7">
     {error && role !== "staff" && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-    {role === "customer" ? <CustomerOverview user={user} upcoming={upcoming} bookings={bookings} payments={payments} favorites={favorites} router={router} /> : role === "owner" ? <OwnerOverview workspace={selectedWorkspace} dashboards={dashboards} bookings={bookings} resources={resources} /> : error ? <DashboardLoadError onRetry={() => { setLoading(true); setReloadKey((value) => value + 1); }} /> : <StaffOverview user={user} workspace={selectedWorkspace} bookings={bookings} resources={resources} />}
+    {role === "customer" ? <CustomerOverview user={user} upcoming={upcoming} bookings={bookings} payments={payments} favorites={favorites} router={router} /> : role === "owner" ? <OwnerOverview workspace={selectedWorkspace} dashboards={dashboards} bookings={bookings} resources={resources} pendingBookingAlertSeenAt={pendingBookingAlertSeenAt} /> : error ? <DashboardLoadError onRetry={() => { setLoading(true); setReloadKey((value) => value + 1); }} /> : <StaffOverview user={user} workspace={selectedWorkspace} bookings={bookings} resources={resources} />}
   </div>;
 }
 
@@ -111,9 +125,9 @@ function CustomerOverview({ user, upcoming, bookings, payments, favorites, route
   </>;
 }
 
-function OwnerOverview({ workspace, dashboards, bookings, resources }: { workspace?: Workspace; dashboards: DashboardData[]; bookings: Booking[]; resources: Resource[] }) {
+function OwnerOverview({ workspace, dashboards, bookings, resources, pendingBookingAlertSeenAt }: { workspace?: Workspace; dashboards: DashboardData[]; bookings: Booking[]; resources: Resource[]; pendingBookingAlertSeenAt: string | null }) {
   const totals = dashboards.reduce((sum, dashboard) => ({ pending: sum.pending + dashboard.bookings.pending, revenue: sum.revenue + Number(dashboard.revenue.total), active: sum.active + dashboard.resources.active }), { pending: 0, revenue: 0, active: 0 });
-  const pendingRequests = bookings.filter((booking) => booking.status === "pending");
+  const pendingRequests = bookings.filter((booking) => booking.status === "pending" && (!pendingBookingAlertSeenAt || booking.created_at > pendingBookingAlertSeenAt));
   const activity = Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - (6 - index)); return { date, count: bookings.filter((booking) => new Date(booking.start_at).toDateString() === date.toDateString()).length }; });
   const maxActivity = Math.max(1, ...activity.map((item) => item.count));
   const currentBookings = bookings.filter((booking) => activeStatuses.has(booking.status) && new Date(booking.start_at) <= new Date() && new Date(booking.end_at) > new Date());
@@ -121,6 +135,7 @@ function OwnerOverview({ workspace, dashboards, bookings, resources }: { workspa
   const reservedResourceIds = new Set(currentBookings.filter((booking) => booking.status !== "checked_in").map((booking) => booking.resource?.id));
   return <>
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold text-[#176b4d]">Business overview</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Welcome back{workspace ? ` to ${workspace.name}` : ""}.</h1><p className="mt-2 text-slate-500">A clear view of your workspace, resources, and reservations.</p></div><div className="flex flex-wrap gap-2"><Link href="/owner/workspaces" className="inline-flex h-10 items-center gap-2 rounded-lg border bg-white px-4 text-sm font-semibold"><Building2 className="size-4" />My workspaces</Link><Link href="/owner/workspaces" className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#176b4d] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#125a40] hover:shadow-md"><Plus className="size-4" />Add workspace</Link></div></div>
+    {workspace && <BankTransferSetupReminder key={workspace.id} workspace={workspace} />}
     {pendingRequests.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-amber-950">Bookings pending payment</h2><p className="mt-1 text-sm text-amber-800">{pendingRequests.length} reservation{pendingRequests.length === 1 ? "" : "s"} awaiting customer payment or transfer review.</p></div>{workspace && <Link href={`/workspaces/${workspace.id}/bookings`} className="text-sm font-semibold text-amber-950">View bookings <ArrowRight className="inline size-4" /></Link>}</div><div className="mt-3 divide-y divide-amber-200">{pendingRequests.slice(0, 3).map((booking) => <Link key={booking.id} href={`/workspaces/${booking.workspace?.id ?? workspace?.id}/bookings`} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span><strong>{booking.user?.name ?? "Customer"}</strong> requested {booking.resource?.name ?? "a resource"} at {booking.workspace?.name ?? "your workspace"}</span><span className="text-amber-900">{new Date(booking.start_at).toLocaleString()}</span></Link>)}</div></section>}
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"><Metric icon={<Banknote />} label="Total revenue" value={`${totals.revenue.toFixed(2)} MAD`} /><Metric icon={<Banknote />} label="Revenue this month" value={`${dashboards.reduce((sum, item) => sum + Number(item.revenue.current_period), 0).toFixed(2)} MAD`} /><Metric icon={<CalendarDays />} label="Total bookings" value={dashboards.reduce((sum, item) => sum + item.bookings.total, 0)} /><Metric icon={<CalendarDays />} label="Today's bookings" value={dashboards.reduce((sum, item) => sum + item.today.bookings, 0)} /><Metric icon={<DoorOpen />} label="Active / total resources" value={`${totals.active} / ${dashboards.reduce((sum, item) => sum + item.resources.total, 0)}`} /><Metric icon={<Users />} label="Workspace members" value={dashboards.reduce((sum, item) => sum + item.members.total, 0)} /></div>
     <section className="grid gap-3 rounded-2xl border border-[#e8ebf3] bg-white p-5 sm:grid-cols-3 lg:grid-cols-5">{(["pending", "confirmed", "checked_in", "completed", "cancelled"] as const).map((status) => <div key={status} className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-medium capitalize text-slate-500">{status.replace("_", " ")}</p><p className="mt-1 text-xl font-bold">{dashboards.reduce((sum, item) => sum + item.bookings[status], 0)}</p></div>)}</section>
@@ -128,6 +143,34 @@ function OwnerOverview({ workspace, dashboards, bookings, resources }: { workspa
     <section className="overflow-hidden rounded-2xl border border-[#e8ebf3] bg-white"><div className="flex items-center justify-between p-5 sm:px-6"><div><h2 className="text-lg font-semibold">Recent bookings</h2><p className="mt-1 text-sm text-slate-500">Latest requests for this workspace.</p></div>{workspace && <Link href={`/workspaces/${workspace.id}/bookings`} className="text-sm font-semibold text-[#176b4d]">Manage bookings</Link>}</div>{bookings.length === 0 ? <p className="border-t p-8 text-center text-sm text-slate-500">No reservations yet. Add spaces and share your workspace listing.</p> : <><div className="hidden overflow-x-auto xl:block"><table className="w-full min-w-[960px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-5 py-3 font-semibold">Booking</th><th className="px-5 py-3 font-semibold">Customer</th><th className="px-5 py-3 font-semibold">Workspace &amp; resource</th><th className="px-5 py-3 font-semibold">When</th><th className="px-5 py-3 font-semibold">Payment method</th><th className="px-5 py-3 font-semibold">Total</th><th className="px-5 py-3 font-semibold">Booking status</th><th className="px-5 py-3 font-semibold">Payment status</th></tr></thead><tbody className="divide-y divide-[#edf0f5]">{bookings.slice(0, 6).map((booking) => <tr key={booking.id}><td className="px-5 py-4 font-semibold">Booking {booking.id}</td><td className="px-5 py-4 font-medium">{booking.user?.name ?? "Customer"}</td><td className="px-5 py-4"><p className="font-medium">{booking.resource?.name ?? "Booked resource"}</p><p className="mt-1 text-xs text-slate-500">{booking.workspace?.name ?? "Workspace"}</p></td><td className="px-5 py-4 text-slate-500">{new Date(booking.start_at).toLocaleString()}</td><td className="px-5 py-4">{booking.payment_method === "bank_transfer" ? "Bank transfer" : booking.payment_method === "cash" ? "Cash" : "—"}</td><td className="px-5 py-4 font-medium">{Number(booking.total_price).toFixed(2)} MAD</td><td className="px-5 py-4 capitalize text-slate-600">{booking.expired ? "Expired" : booking.status.replace("_", " ")}</td><td className="px-5 py-4 capitalize text-slate-600">{booking.fully_paid ? "Paid" : booking.payment?.status ?? "Unpaid"}</td></tr>)}</tbody></table></div><div className="divide-y divide-[#edf0f5] xl:hidden">{bookings.slice(0, 6).map((booking) => <article key={booking.id} className="flex items-center justify-between gap-3 border-t border-[#edf0f5] px-5 py-4"><div className="min-w-0"><p className="text-xs font-semibold text-slate-500">Booking {booking.id} · {booking.user?.name ?? "Customer"}</p><p className="mt-1 truncate font-medium">{booking.resource?.name ?? "Booked resource"}</p><p className="mt-1 text-xs text-slate-500">{new Date(booking.start_at).toLocaleString()}</p></div><div className="shrink-0 text-right"><p className="text-xs font-medium capitalize text-slate-600">{booking.expired ? "Expired" : booking.status.replace("_", " ")}</p><p className="mt-1 text-xs capitalize text-slate-500">{booking.fully_paid ? "Paid" : booking.payment?.status ?? "Unpaid"}</p></div></article>)}</div></>}</section>
     <div className="grid gap-4 sm:grid-cols-3"><QuickAction href="/owner/workspaces" icon={<Plus />} title="Add a workspace" description="List a new location" /><QuickAction href={workspace ? `/workspaces/${workspace.id}/resources` : "/owner/workspaces"} icon={<DoorOpen />} title="Add a resource" description="Create a desk, office, or room" /><QuickAction href={workspace ? `/workspaces/${workspace.id}/members` : "/owner/workspaces"} icon={<Users />} title="Manage your team" description="Invite staff and members" /></div>
   </>;
+}
+
+function BankTransferSetupReminder({ workspace }: { workspace: Workspace }) {
+  const [setupStatus, setSetupStatus] = useState<{ workspaceId: number; configured: boolean } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadStatus = () => {
+      setSetupStatus(null);
+      void getWorkspaceBankTransferSetupStatus(workspace.id)
+        .then((configured) => { if (active) setSetupStatus({ workspaceId: workspace.id, configured }); })
+        .catch(() => { if (active) setSetupStatus(null); });
+    };
+    const onUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ workspaceId: number }>).detail;
+      if (detail?.workspaceId === workspace.id) loadStatus();
+    };
+    loadStatus();
+    window.addEventListener("workspace-bank-transfer-setup-updated", onUpdated);
+    return () => { active = false; window.removeEventListener("workspace-bank-transfer-setup-updated", onUpdated); };
+  }, [workspace.id]);
+
+  if (setupStatus?.workspaceId !== workspace.id || setupStatus.configured) return null;
+
+  return <section role="status" aria-labelledby="bank-transfer-reminder-title" className="flex flex-col gap-4 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
+    <div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-800"><Banknote className="size-5" /></span><div><h2 id="bank-transfer-reminder-title" className="font-semibold text-amber-950">Bank Transfer Setup Incomplete</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-amber-900">This workspace doesn&apos;t have bank-transfer beneficiary details configured yet. Configure them in Settings to accept bank-transfer payments.</p></div></div>
+    <Link href={`/workspaces/${workspace.id}/settings#bank-transfer-details`} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#176b4d] px-4 text-sm font-semibold text-white transition hover:bg-[#125a40] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#176b4d]/20">Configure Bank Details<ArrowRight className="size-4" /></Link>
+  </section>;
 }
 
 function StaffOverview({ user, workspace, bookings, resources }: { user: AuthUser | null; workspace?: Workspace; bookings: Booking[]; resources: Resource[] }) {

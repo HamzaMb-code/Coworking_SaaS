@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { ArrowLeft, ArrowRight, Bell, Check, ExternalLink } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bell, Check, ExternalLink, Trash2 } from "lucide-react";
+import DeleteNotificationsDialog from "@/components/notifications/DeleteNotificationsDialog";
 import {
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  deleteAllNotifications,
+  deleteNotification,
   type AppNotification,
   type NotificationPagination,
 } from "@/lib/notifications";
@@ -35,6 +38,8 @@ export default function NotificationsPage() {
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const loadNotifications = useCallback(async () => {
@@ -99,7 +104,7 @@ export default function NotificationsPage() {
       }
       setBusyId(null);
     }
-    if (notification.url) router.push(notification.url);
+    if (notification.url) router.push(notification.url.replace(/\/bookings\/today(?=\/|\?|$)/, "/bookings"));
     else await loadNotifications();
   };
 
@@ -124,10 +129,44 @@ export default function NotificationsPage() {
     }
   };
 
+  const removeNotification = async (notification: AppNotification) => {
+    if (busyId || deletingAll || markingAll) return;
+    setBusyId(notification.id);
+    setError("");
+    try {
+      setUnreadCount(await deleteNotification(notification.id));
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+      if (notifications.length === 1 && page > 1) setPage((current) => current - 1);
+      setPagination((current) => current ? { ...current, total: Math.max(0, current.total - 1) } : current);
+    } catch (requestError: unknown) {
+      setError(notificationError(requestError));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const removeAllNotifications = async () => {
+    if (!pagination?.total || deletingAll || markingAll) return;
+    setDeletingAll(true);
+    setError("");
+    try {
+      await deleteAllNotifications();
+      setNotifications([]);
+      setPagination((current) => current ? { ...current, total: 0, current_page: 1, last_page: 1 } : current);
+      setUnreadCount(0);
+      setPage(1);
+      setDeleteAllDialogOpen(false);
+    } catch (requestError: unknown) {
+      setError(notificationError(requestError));
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const changeFilter = (nextFilter: Filter) => { setFilter(nextFilter); setPage(1); };
 
   return <div className="mx-auto max-w-5xl space-y-6">
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold text-[#176b4d]">Your updates</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Notifications</h1><p className="mt-2 text-slate-500">Booking and payment updates for your account and workspaces.</p></div><button type="button" disabled={unreadCount === 0 || markingAll} onClick={() => void markAllRead()} className="inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-[#cbdccf] bg-white px-4 text-sm font-semibold text-[#176b4d] transition hover:bg-[#eaf3ed] disabled:cursor-not-allowed disabled:opacity-40"><Check className="size-4" />{markingAll ? "Marking..." : "Mark all as read"}</button></header>
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold text-[#176b4d]">Your updates</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Notifications</h1><p className="mt-2 text-slate-500">Booking and payment updates for your account and workspaces.</p></div><div className="flex flex-wrap gap-2"><button type="button" disabled={unreadCount === 0 || markingAll || deletingAll} onClick={() => void markAllRead()} className="inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-[#cbdccf] bg-white px-4 text-sm font-semibold text-[#176b4d] transition hover:bg-[#eaf3ed] disabled:cursor-not-allowed disabled:opacity-40"><Check className="size-4" />{markingAll ? "Marking..." : "Mark all as read"}</button><button type="button" disabled={!pagination?.total || deletingAll || markingAll} onClick={() => void removeAllNotifications()} className="inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="size-4" />{deletingAll ? "Deleting..." : "Delete all"}</button></div></header>
 
     <section className="card-surface overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf1ed] px-4 py-3 sm:px-5"><div role="tablist" aria-label="Notification filters" className="inline-flex rounded-xl bg-[#f4f7f4] p-1"><button type="button" role="tab" aria-selected={filter === "all"} onClick={() => changeFilter("all")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${filter === "all" ? "bg-white text-[#176b4d] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>All</button><button type="button" role="tab" aria-selected={filter === "unread"} onClick={() => changeFilter("unread")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${filter === "unread" ? "bg-white text-[#176b4d] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>Unread{unreadCount > 0 && <span className="ml-2 rounded-full bg-[#eaf3ed] px-2 py-0.5 text-xs text-[#176b4d]">{unreadCount}</span>}</button></div><p className="text-sm text-slate-500">{pagination?.total ?? 0} {filter === "unread" ? "unread " : ""}{(pagination?.total ?? 0) === 1 ? "notification" : "notifications"}</p></div>
@@ -135,9 +174,10 @@ export default function NotificationsPage() {
       {error && <div role="alert" className="m-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p>{error}</p><button type="button" onClick={() => setReloadKey((value) => value + 1)} className="mt-2 font-semibold underline">Try again</button></div>}
       {loading ? <div className="space-y-3 p-5" aria-label="Loading notifications">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-24 animate-pulse rounded-xl bg-[#f0f4f0]" />)}</div>
         : !error && notifications.length === 0 ? <div className="px-6 py-16 text-center"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#eaf3ed] text-[#176b4d]"><Bell className="size-6" /></span><h2 className="mt-4 font-semibold">{filter === "unread" ? "No unread notifications" : "No notifications yet"}</h2><p className="mt-1 text-sm text-slate-500">{filter === "unread" ? "You’re all caught up." : "Updates about bookings and payments will appear here."}</p></div>
-          : !error && <div className="divide-y divide-[#edf1ed]">{notifications.map((notification) => <article key={notification.id} className={`flex items-start gap-3 p-4 sm:gap-4 sm:p-5 ${notification.is_read ? "bg-white" : "bg-[#f1f8f3]"}`}><span className={`mt-2 size-2.5 shrink-0 rounded-full ${notification.is_read ? "bg-transparent" : "bg-[#176b4d]"}`} /><div className="min-w-0 flex-1"><button type="button" disabled={busyId === notification.id} onClick={() => void openNotification(notification)} className="block w-full text-left focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#176b4d]"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-[#26332e]">{notification.title}</span>{!notification.is_read && <span className="rounded-full bg-[#dcefe1] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#176b4d]">Unread</span>}</span><span className="mt-1 block text-sm leading-6 text-slate-600">{notification.message}</span><span className="mt-2 block text-xs text-slate-400">{formatTimestamp(notification.created_at)}</span></button>{notification.url && <button type="button" disabled={busyId === notification.id} onClick={() => void openNotification(notification)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#176b4d] hover:underline">Open related page<ExternalLink className="size-3.5" /></button>}</div>{!notification.is_read && <button type="button" disabled={busyId === notification.id} onClick={() => void markRead(notification)} className="shrink-0 rounded-lg px-2.5 py-2 text-xs font-semibold text-[#176b4d] hover:bg-white disabled:opacity-40">Mark read</button>}</article>)}</div>}
+          : !error && <div className="divide-y divide-[#edf1ed]">{notifications.map((notification) => <article key={notification.id} className={`flex items-start gap-3 p-4 sm:gap-4 sm:p-5 ${notification.is_read ? "bg-white" : "bg-[#f1f8f3]"}`}><span className={`mt-2 size-2.5 shrink-0 rounded-full ${notification.is_read ? "bg-transparent" : "bg-[#176b4d]"}`} /><div className="min-w-0 flex-1"><button type="button" disabled={busyId === notification.id} onClick={() => void openNotification(notification)} className="block w-full text-left focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#176b4d]"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-[#26332e]">{notification.title}</span>{!notification.is_read && <span className="rounded-full bg-[#dcefe1] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#176b4d]">Unread</span>}</span><span className="mt-1 block text-sm leading-6 text-slate-600">{notification.message}</span><span className="mt-2 block text-xs text-slate-400">{formatTimestamp(notification.created_at)}</span></button>{notification.url && <button type="button" disabled={busyId === notification.id} onClick={() => void openNotification(notification)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#176b4d] hover:underline">Open related page<ExternalLink className="size-3.5" /></button>}</div><div className="flex shrink-0 items-center gap-1">{!notification.is_read && <button type="button" disabled={busyId === notification.id || deletingAll} onClick={() => void markRead(notification)} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-[#176b4d] hover:bg-white disabled:opacity-40">Mark read</button>}<button type="button" disabled={busyId !== null || deletingAll || markingAll} onClick={() => void removeNotification(notification)} aria-label={`Delete notification: ${notification.title}`} className="grid size-9 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 className="size-4" /></button></div></article>)}</div>}
 
       {!loading && !error && pagination && pagination.total > 0 && <div className="flex flex-col gap-3 border-t border-[#edf1ed] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><p className="text-sm text-slate-500">Page {pagination.current_page} of {pagination.last_page}</p><div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)} className="inline-flex h-9 items-center gap-1 rounded-lg border border-[#dce5df] px-3 text-sm font-semibold disabled:opacity-40"><ArrowLeft className="size-4" />Previous</button><button type="button" disabled={page >= pagination.last_page} onClick={() => setPage((current) => current + 1)} className="inline-flex h-9 items-center gap-1 rounded-lg border border-[#dce5df] px-3 text-sm font-semibold disabled:opacity-40">Next<ArrowRight className="size-4" /></button></div></div>}
     </section>
+    <DeleteNotificationsDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen} onConfirm={() => void removeAllNotifications()} busy={deletingAll} />
   </div>;
 }
