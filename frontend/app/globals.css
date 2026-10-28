@@ -182,3 +182,24 @@ button:focus-visible {
   outline-offset: 3px;
   box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 20%, transparent);
 }
+
+a:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 72%, transparent);
+  outline-offset: 3px;
+  border-radius: 0.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

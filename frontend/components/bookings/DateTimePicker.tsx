@@ -9,6 +9,7 @@ type DateTimePickerProps = {
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
+  align?: "start" | "end";
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -20,7 +21,7 @@ const parseValue = (value: string) => {
   return { date, time: timePart.slice(0, 5) };
 };
 
-export default function DateTimePicker({ id, label, value, onChange, required = false }: DateTimePickerProps) {
+export default function DateTimePicker({ id, label, value, onChange, required = false, align = "start" }: DateTimePickerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const parsed = useMemo(() => parseValue(value), [value]);
   const [open, setOpen] = useState(false);
@@ -89,12 +90,12 @@ export default function DateTimePicker({ id, label, value, onChange, required = 
 
   return <div className="relative" ref={rootRef}>
     <label htmlFor={id} className="text-sm font-medium">{label}{required && <span className="text-destructive"> *</span>}</label>
-    <button id={id} type="button" aria-haspopup="dialog" aria-expanded={open} aria-required={required} onClick={open ? () => setOpen(false) : beginEdit} className="mt-2 flex h-11 w-full items-center gap-3 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition hover:border-[#176b4d]/50 focus-visible:ring-2 focus-visible:ring-[#176b4d]/30">
+    <button id={id} type="button" aria-haspopup="dialog" aria-expanded={open} onClick={open ? () => setOpen(false) : beginEdit} className="mt-2 flex h-11 w-full items-center gap-3 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition hover:border-[#176b4d]/50 focus-visible:ring-2 focus-visible:ring-[#176b4d]/30">
       <CalendarDays className="size-4 shrink-0 text-[#176b4d]" />
       <span className={value ? "text-foreground" : "text-muted-foreground"}>{displayValue}</span>
       <Clock3 className="ml-auto size-4 shrink-0 text-muted-foreground" />
     </button>
-    {open && <div role="dialog" aria-label={`${label} date and time`} className="absolute left-0 top-full z-50 mt-2 w-[min(600px,calc(100vw-2rem))] overflow-hidden rounded-2xl border bg-background shadow-xl">
+    {open && <div role="dialog" aria-label={`${label} date and time`} className={`absolute ${align === "end" ? "right-0" : "left-0"} top-full z-50 mt-2 max-h-[min(80svh,44rem)] w-[min(600px,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl border bg-background shadow-xl`}>
       <div className="grid md:grid-cols-[1.35fr_0.9fr]">
         <section className="p-4 sm:p-5" aria-label="Choose a date">
           <div className="flex h-9 items-center justify-between">

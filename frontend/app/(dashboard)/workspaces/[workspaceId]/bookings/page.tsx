@@ -460,7 +460,7 @@ export default function BookingsPage() {
           </div>
 
           <DateTimePicker id="startAt" label="Start" value={startAt} onChange={(value) => (setStartAt(value), setQuote(null))} />
-          <DateTimePicker id="endAt" label="End" value={endAt} onChange={(value) => (setEndAt(value), setQuote(null))} />
+          <DateTimePicker id="endAt" label="End" value={endAt} onChange={(value) => (setEndAt(value), setQuote(null))} align="end" />
 
           {quote && <div className="md:col-span-2 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-950"><p className="font-semibold">Calculated booking total</p><p className="mt-1 text-2xl font-bold">{Number(quote.total_price).toFixed(2)} MAD</p><p className="mt-1 text-xs text-emerald-800">Price based on {quote.pricing_unit} billing at {Number(quote.unit_price).toFixed(2)} MAD per {quote.pricing_unit}. Final amount is confirmed by the backend when saved.</p></div>}
           <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row">
