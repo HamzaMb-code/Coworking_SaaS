@@ -6,7 +6,8 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libonig-dev unzip \
     && docker-php-ext-install -j"$(nproc)" mbstring opcache pdo_mysql \
-    && a2enmod headers rewrite \
+    && a2dismod mpm_event mpm_worker \
+    && a2enmod mpm_prefork headers rewrite \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
