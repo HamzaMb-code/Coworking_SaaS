@@ -14,4 +14,15 @@ chown -R www-data:www-data storage bootstrap/cache
 chmod -R ug+rwX storage bootstrap/cache
 
 php artisan config:cache
+
+rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
+a2enmod mpm_prefork
+
+mpm_loads="$(find /etc/apache2/mods-enabled -maxdepth 1 -type l -name 'mpm_*.load' -printf '%f\n')"
+if [ "$mpm_loads" != "mpm_prefork.load" ]; then
+    echo "Expected exactly mpm_prefork.load enabled; found: ${mpm_loads:-none}" >&2
+    exit 1
+fi
+
+apache2ctl configtest
 exec "$@"
