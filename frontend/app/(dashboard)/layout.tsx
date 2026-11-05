@@ -21,6 +21,7 @@ const navigation: Record<DashboardRole, NavLink[]> = {
   customer: [
     { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
     { label: "Explore Workspaces", href: "/workspaces", icon: Compass },
+    { label: "Add a Workspace", href: "/owner/workspaces", icon: Building2 },
     { label: "My Bookings", href: "/bookings", icon: CalendarDays },
     { label: "Invitations", href: "/invitations", icon: Inbox },
     { label: "Notifications", href: "/notifications", icon: Bell },
