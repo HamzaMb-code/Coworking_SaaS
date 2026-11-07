@@ -82,7 +82,7 @@ class WorkspaceDeletionAndImagesTest extends TestCase
         $this->assertNotEmpty($response->json('workspace.image_url'));
     }
 
-    public function test_invalid_image_format_and_file_over_five_megabytes_are_rejected(): void
+    public function test_invalid_image_format_and_file_over_ten_megabytes_are_rejected(): void
     {
         $owner = User::factory()->create();
         $base = ['name' => 'Invalid Image', 'slug' => 'invalid-image', 'address' => '1 Main St', 'city' => 'Rabat'];
@@ -90,8 +90,29 @@ class WorkspaceDeletionAndImagesTest extends TestCase
         $this->actingAs($owner)->post('/api/workspaces', [...$base, 'image' => UploadedFile::fake()->create('image.svg', 5, 'image/svg+xml')], ['Accept' => 'application/json'])
             ->assertUnprocessable()->assertJsonValidationErrors('image');
 
-        $this->actingAs($owner)->post('/api/workspaces', [...$base, 'slug' => 'large-image', 'image' => UploadedFile::fake()->create('large.jpg', 5121, 'image/jpeg')], ['Accept' => 'application/json'])
+        $this->actingAs($owner)->post('/api/workspaces', [...$base, 'slug' => 'large-image', 'image' => self::pngUpload('large.png')->size(10241)], ['Accept' => 'application/json'])
             ->assertUnprocessable()->assertJsonValidationErrors('image');
+    }
+
+    public function test_ten_megabyte_workspace_images_are_accepted_on_create_and_update(): void
+    {
+        Storage::fake('public');
+        $owner = User::factory()->create();
+        $base = ['name' => 'Large Image', 'slug' => 'large-image-valid', 'address' => '1 Main St', 'city' => 'Rabat'];
+
+        $createUpload = self::pngUpload('large.png')->size(10240);
+        $createResponse = $this->actingAs($owner)->post('/api/workspaces', [...$base, 'image' => $createUpload], ['Accept' => 'application/json'])->assertCreated();
+        $workspaceId = $createResponse->json('workspace.id');
+        $createPath = $createResponse->json('workspace.image_path');
+        Storage::disk('public')->assertExists($createPath);
+
+        $updateUpload = self::pngUpload('larger.png')->size(10240);
+        $updateResponse = $this->actingAs($owner)->post("/api/workspaces/{$workspaceId}", ['_method' => 'PUT', 'image' => $updateUpload], ['Accept' => 'application/json'])->assertOk();
+        $updatePath = $updateResponse->json('workspace.image_path');
+
+        $this->assertNotSame($createPath, $updatePath);
+        Storage::disk('public')->assertMissing($createPath);
+        Storage::disk('public')->assertExists($updatePath);
     }
 
     public function test_owner_can_replace_or_remove_workspace_image_without_leaving_old_files(): void

@@ -45,7 +45,7 @@ export interface CreateWorkspaceData {
 export function workspaceImageValidationError(file: File): string | null {
   const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
   if (!allowedTypes.includes(file.type)) return "Choose a JPG, PNG, or WebP image.";
-  if (file.size > 5 * 1024 * 1024) return "Workspace images must be 5 MB or smaller.";
+  if (file.size > 10 * 1024 * 1024) return "Workspace images must be 10 MB or smaller.";
   return null;
 }
 

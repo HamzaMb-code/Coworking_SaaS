@@ -13,6 +13,9 @@ RUN apt-get update \
     && test "$mpm_loads" = "mpm_prefork.load" \
     && rm -rf /var/lib/apt/lists/*
 
+COPY docker/php-upload.ini /usr/local/etc/php/conf.d/zz-upload-limits.ini
+RUN php -r '$expected = ["upload_max_filesize" => "10M", "post_max_size" => "12M", "max_file_uploads" => "20"]; $scanned = php_ini_scanned_files() ?: ""; if (! str_contains($scanned, "zz-upload-limits.ini")) { fwrite(STDERR, "PHP upload limits config was not loaded.\n"); exit(1); } foreach ($expected as $directive => $value) { if (ini_get($directive) !== $value) { fwrite(STDERR, "$directive expected $value, got ".ini_get($directive)."\n"); exit(1); } }'
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
