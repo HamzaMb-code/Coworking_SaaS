@@ -37,8 +37,8 @@ class PaymentResource extends JsonResource
             'proof_available' => (bool) $this->proof_path,
             'receipt_available' => $receiptAvailable,
             'links' => [
-                'proof' => $this->proof_path ? route('payments.proof', [$this->booking->workspace_id, $this->id]) : null,
-                'receipt' => $receiptAvailable ? route('payments.receipt', [$this->booking->workspace_id, $this->id]) : null,
+                'proof' => $this->proof_path ? $this->paymentFileUrl('payments.proof') : null,
+                'receipt' => $receiptAvailable ? $this->paymentFileUrl('payments.receipt') : null,
             ],
             'booking' => $this->whenLoaded('booking', function () {
                 $booking = $this->getRelation('booking');
@@ -66,5 +66,17 @@ class PaymentResource extends JsonResource
                 ];
             }),
         ];
+    }
+
+    private function paymentFileUrl(string $routeName): string
+    {
+        $parameters = [$this->booking->workspace_id, $this->id];
+        $routePath = route($routeName, $parameters, false);
+
+        // Payment documents are served over HTTPS in production. Force HTTPS
+        // only for these links, while keeping local scheme detection intact.
+        return config('app.env') === 'production'
+            ? url()->to($routePath, [], true)
+            : route($routeName, $parameters);
     }
 }

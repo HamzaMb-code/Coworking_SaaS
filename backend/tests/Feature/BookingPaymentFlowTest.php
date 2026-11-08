@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\BookingStatus;
+use App\Http\Resources\PaymentResource;
 use App\Models\Booking;
 use App\Models\Payment;
 use App\Models\Resource;
@@ -56,6 +57,87 @@ class BookingPaymentFlowTest extends TestCase
             'type' => ResourceType::MEETING_ROOM,
             'status' => ResourceStatus::ACTIVE,
         ]);
+    }
+
+    public function test_payment_file_links_use_https_in_production_and_preserve_local_scheme(): void
+    {
+        $booking = $this->confirmedBooking();
+        $payment = Payment::create([
+            'booking_id' => $booking->id,
+            'amount' => '123.45',
+            'status' => PaymentStatus::PAID,
+            'payment_method' => 'bank_transfer',
+            'proof_path' => 'payment-proofs/proof.pdf',
+            'receipt_number' => 'WSR-TEST-001',
+            'receipt_path' => 'payment-receipts/WSR-TEST-001.pdf',
+        ])->load('booking');
+
+        config(['app.env' => 'production']);
+        $productionPayload = (new PaymentResource($payment))->resolve(request());
+        $this->assertSame('https', parse_url($productionPayload['links']['proof'], PHP_URL_SCHEME));
+        $this->assertSame('https', parse_url($productionPayload['links']['receipt'], PHP_URL_SCHEME));
+
+        config(['app.env' => 'local']);
+        $localPayload = (new PaymentResource($payment))->resolve(request());
+        $expectedLocalScheme = parse_url(request()->root(), PHP_URL_SCHEME);
+        $this->assertSame($expectedLocalScheme, parse_url($localPayload['links']['proof'], PHP_URL_SCHEME));
+        $this->assertSame($expectedLocalScheme, parse_url($localPayload['links']['receipt'], PHP_URL_SCHEME));
+    }
+
+    public function test_unauthenticated_payment_file_requests_return_json_401_without_login_redirect(): void
+    {
+        $booking = $this->confirmedBooking();
+        $payment = Payment::create([
+            'booking_id' => $booking->id,
+            'amount' => '123.45',
+            'status' => PaymentStatus::PAID,
+            'payment_method' => 'bank_transfer',
+            'proof_path' => 'payment-proofs/proof.pdf',
+            'receipt_number' => 'WSR-TEST-002',
+            'receipt_path' => 'payment-receipts/WSR-TEST-002.pdf',
+        ]);
+
+        foreach (['proof', 'receipt'] as $fileType) {
+            $this->get("/api/workspaces/{$this->workspace->id}/payments/{$payment->id}/{$fileType}", [
+                'Accept' => 'text/html',
+            ])->assertUnauthorized()
+                ->assertJsonPath('message', 'Unauthenticated.');
+        }
+    }
+
+    public function test_customer_and_workspace_managers_can_download_payment_files_but_other_users_cannot(): void
+    {
+        Storage::fake('local');
+        $booking = $this->confirmedBooking();
+        $proofPath = 'payment-proofs/authorized-proof.pdf';
+        $receiptPath = 'payment-receipts/WSR-TEST-003.pdf';
+        Storage::disk('local')->put($proofPath, 'private proof bytes');
+        Storage::disk('local')->put($receiptPath, '%PDF-1.4 private receipt');
+        $payment = Payment::create([
+            'booking_id' => $booking->id,
+            'amount' => '123.45',
+            'status' => PaymentStatus::PAID,
+            'payment_method' => 'bank_transfer',
+            'proof_path' => $proofPath,
+            'receipt_number' => 'WSR-TEST-003',
+            'receipt_path' => $receiptPath,
+        ]);
+
+        $proofUrl = "/api/workspaces/{$this->workspace->id}/payments/{$payment->id}/proof";
+        $receiptUrl = "/api/workspaces/{$this->workspace->id}/payments/{$payment->id}/receipt";
+        $bearerToken = $this->customer->createToken('payment-file-test')->plainTextToken;
+        $this->get($proofUrl, ['Authorization' => 'Bearer '.$bearerToken])->assertOk();
+        $this->get($receiptUrl, ['Authorization' => 'Bearer '.$bearerToken])
+            ->assertOk()->assertHeader('content-type', 'application/pdf');
+
+        foreach ([$this->customer, $this->owner, $this->staff] as $authorizedUser) {
+            $this->actingAs($authorizedUser)->get($proofUrl)->assertOk();
+            $this->actingAs($authorizedUser)->get($receiptUrl)->assertOk()->assertHeader('content-type', 'application/pdf');
+        }
+
+        $otherUser = User::factory()->create();
+        $this->actingAs($otherUser)->get($proofUrl)->assertForbidden();
+        $this->actingAs($otherUser)->get($receiptUrl)->assertForbidden();
     }
 
     public function test_workspace_staff_must_select_a_customer_and_booking_is_created_for_that_customer(): void
