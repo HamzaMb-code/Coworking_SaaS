@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { Armchair, BriefcaseBusiness, CalendarDays, LayoutGrid, Monitor, UsersRound } from "lucide-react";
 import type { ResourceType } from "@/lib/resources";
+import { cloudinaryImageSrcSet } from "@/lib/cloudinary-images";
 
 type ResourceImageProps = {
   imageUrl?: string | null;
@@ -32,6 +33,7 @@ export default function ResourceImage({
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const isSupportedUrl = Boolean(imageUrl && /^(https?:\/\/|blob:|\/)/i.test(imageUrl.trim()));
   const hasImage = Boolean(isSupportedUrl && imageUrl && failedUrl !== imageUrl);
+  const srcSet = hasImage ? cloudinaryImageSrcSet(imageUrl) : undefined;
   const fallback = Object.prototype.hasOwnProperty.call(fallbackByType, type)
     ? fallbackByType[type as ResourceType]
     : { icon: LayoutGrid, title: "Workspace resource", colors: "bg-[#f1f4f1] text-[#617068]" };
@@ -41,15 +43,18 @@ export default function ResourceImage({
   return (
     <div className={`${className} ${hasImage ? "bg-[#e8eee8]" : fallback.colors}`}>
       {hasImage ? (
-        <Image
-          unoptimized
-          src={imageUrl!}
-          alt={label}
-          fill
-          sizes={sizes}
-          className={imageClassName}
-          onError={() => setFailedUrl(imageUrl ?? "")}
-        />
+        <picture className="absolute inset-0 block">
+          {srcSet && <source srcSet={srcSet} sizes={sizes} />}
+          <Image
+            unoptimized
+            src={imageUrl!}
+            alt={label}
+            fill
+            sizes={sizes}
+            className={imageClassName}
+            onError={() => setFailedUrl(imageUrl ?? "")}
+          />
+        </picture>
       ) : (
         <div role={alt ? "img" : undefined} aria-label={alt ? label : undefined} aria-hidden={alt ? undefined : true} className="absolute inset-0 grid place-items-center">
           <span className="grid size-14 place-items-center rounded-xl bg-white/75 shadow-sm ring-1 ring-black/[.04] sm:size-16">

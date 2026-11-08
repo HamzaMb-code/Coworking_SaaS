@@ -5,6 +5,7 @@ namespace App\Models;
 use App\PricingUnit;
 use App\ResourceStatus;
 use App\ResourceType;
+use App\Services\CloudinaryImageService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +23,8 @@ class Resource extends Model
         'name',
         'description',
         'image_path',
+        'cloudinary_url',
+        'image_public_id',
         'type',
         'capacity',
         'price',
@@ -31,7 +34,12 @@ class Resource extends Model
 
     public function getImageUrlAttribute(): ?string
     {
-        return $this->image_path ? Storage::disk('public')->url($this->image_path) : null;
+        if ($this->cloudinary_url && $this->image_public_id) {
+            return app(CloudinaryImageService::class)->deliveryUrl($this->image_public_id);
+        }
+
+        return $this->cloudinary_url
+            ?? ($this->image_path ? Storage::disk('public')->url($this->image_path) : null);
     }
 
     protected function casts(): array

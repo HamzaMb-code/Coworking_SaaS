@@ -5,12 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Workspace;
 use App\Models\Booking;
 use App\Models\WorkspaceBankTransferDetail;
+use App\Services\CloudinaryImageService;
 use App\WorkspaceMemberRole;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Storage;
 
 class WorkspaceController extends Controller
 {
@@ -193,7 +193,7 @@ class WorkspaceController extends Controller
         ]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, CloudinaryImageService $images): JsonResponse
     {
         Gate::authorize('create', Workspace::class);
 
@@ -210,8 +210,12 @@ class WorkspaceController extends Controller
 
         $image = $validated['image'] ?? null;
         unset($validated['image']);
+        $uploadedImage = null;
         if ($image) {
-            $validated['image_path'] = $image->store('workspaces', 'public');
+            $uploadedImage = $images->upload($image, CloudinaryImageService::WORKSPACE_FOLDER);
+            $validated['cloudinary_url'] = $uploadedImage['secure_url'];
+            $validated['image_public_id'] = $uploadedImage['public_id'];
+            $validated['image_path'] = null;
         }
 
         try {
@@ -225,8 +229,8 @@ class WorkspaceController extends Controller
                 return $workspace;
             });
         } catch (\Throwable $exception) {
-            if (! empty($validated['image_path'])) {
-                Storage::disk('public')->delete($validated['image_path']);
+            if ($uploadedImage) {
+                $images->delete($uploadedImage['public_id']);
             }
             throw $exception;
         }
@@ -237,7 +241,7 @@ class WorkspaceController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, Workspace $workspace): JsonResponse
+    public function update(Request $request, Workspace $workspace, CloudinaryImageService $images): JsonResponse
     {
         Gate::authorize('update', $workspace);
 
@@ -260,25 +264,32 @@ class WorkspaceController extends Controller
         ]);
 
         $oldImagePath = $workspace->image_path;
-        $newImagePath = null;
+        $oldPublicId = $workspace->image_public_id;
+        $uploadedImage = null;
         if ($request->hasFile('image')) {
-            $newImagePath = $request->file('image')->store('workspaces', 'public');
-            $validated['image_path'] = $newImagePath;
+            $uploadedImage = $images->upload($request->file('image'), CloudinaryImageService::WORKSPACE_FOLDER);
+            $validated['cloudinary_url'] = $uploadedImage['secure_url'];
+            $validated['image_public_id'] = $uploadedImage['public_id'];
+            $validated['image_path'] = null;
         } elseif ($request->boolean('remove_image')) {
+            $validated['cloudinary_url'] = null;
+            $validated['image_public_id'] = null;
             $validated['image_path'] = null;
         }
         unset($validated['image'], $validated['remove_image']);
 
         try {
-            $workspace->update($validated);
+            if (! $workspace->update($validated)) {
+                throw new \RuntimeException('Workspace update was not saved.');
+            }
         } catch (\Throwable $exception) {
-            if ($newImagePath) {
-                Storage::disk('public')->delete($newImagePath);
+            if ($uploadedImage) {
+                $images->delete($uploadedImage['public_id']);
             }
             throw $exception;
         }
-        if ($oldImagePath && ($newImagePath || $request->boolean('remove_image'))) {
-            Storage::disk('public')->delete($oldImagePath);
+        if ($uploadedImage || $request->boolean('remove_image')) {
+            $images->deletePrevious($oldPublicId, $oldImagePath);
         }
 
         return response()->json([
@@ -287,15 +298,14 @@ class WorkspaceController extends Controller
         ]);
     }
 
-    public function destroy(Workspace $workspace): JsonResponse
+    public function destroy(Workspace $workspace, CloudinaryImageService $images): JsonResponse
     {
         Gate::authorize('delete', $workspace);
 
         $imagePath = $workspace->image_path;
+        $publicId = $workspace->image_public_id;
         $workspace->delete();
-        if ($imagePath) {
-            Storage::disk('public')->delete($imagePath);
-        }
+        $images->deletePrevious($publicId, $imagePath);
 
         return response()->json([
             'message' => 'Workspace deleted successfully.',

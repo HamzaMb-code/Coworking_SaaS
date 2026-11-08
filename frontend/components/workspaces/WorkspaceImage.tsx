@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { Building2 } from "lucide-react";
+import { cloudinaryImageSrcSet } from "@/lib/cloudinary-images";
 
 const FALLBACK_IMAGE = "/images/workspace-placeholder.webp";
 
@@ -28,25 +29,29 @@ export default function WorkspaceImage({
   const currentError = errorState.source === source ? errorState : null;
   const showingUploadedImage = Boolean(usableSource && !currentError?.uploadedFailed);
   const src: string = showingUploadedImage ? usableSource! : FALLBACK_IMAGE;
+  const srcSet = showingUploadedImage ? cloudinaryImageSrcSet(src) : undefined;
 
   return (
     <div className={`${className} bg-[#eaf3ed]`}>
       {!currentError?.fallbackFailed ? (
-        <Image
-          unoptimized
-          src={src}
-          alt={alt}
-          fill
-          sizes={sizes}
-          className={imageClassName}
-          onError={() => {
-            setErrorState({
-              source,
-              uploadedFailed: showingUploadedImage,
-              fallbackFailed: !showingUploadedImage,
-            });
-          }}
-        />
+        <picture className="absolute inset-0 block">
+          {srcSet && <source srcSet={srcSet} sizes={sizes} />}
+          <Image
+            unoptimized
+            src={src}
+            alt={alt}
+            fill
+            sizes={sizes}
+            className={imageClassName}
+            onError={() => {
+              setErrorState({
+                source,
+                uploadedFailed: showingUploadedImage,
+                fallbackFailed: !showingUploadedImage,
+              });
+            }}
+          />
+        </picture>
       ) : (
         <div role="img" aria-label={alt} className="absolute inset-0 grid place-items-center text-[#176b4d]">
           <span className="grid size-14 place-items-center rounded-2xl bg-white/80 ring-1 ring-[#176b4d]/10">

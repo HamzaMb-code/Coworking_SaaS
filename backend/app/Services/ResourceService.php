@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Models\Resource;
 use App\Models\Workspace;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Throwable;
 
 class ResourceService
 {
+    public function __construct(private CloudinaryImageService $images) {}
+
     public function create(
         Workspace $workspace,
         array $data
@@ -18,14 +20,19 @@ class ResourceService
         unset($data['image'], $data['remove_image']);
 
         if ($image instanceof UploadedFile) {
-            $data['image_path'] = $image->store('resources', 'public');
+            $uploadedImage = $this->images->upload($image, CloudinaryImageService::RESOURCE_FOLDER);
+            $data['cloudinary_url'] = $uploadedImage['secure_url'];
+            $data['image_public_id'] = $uploadedImage['public_id'];
+            $data['image_path'] = null;
+        } else {
+            $uploadedImage = null;
         }
 
         try {
             return $workspace->resources()->create($data);
         } catch (Throwable $exception) {
-            if (! empty($data['image_path'])) {
-                Storage::disk('public')->delete($data['image_path']);
+            if ($uploadedImage) {
+                $this->images->delete($uploadedImage['public_id']);
             }
 
             throw $exception;
@@ -37,30 +44,37 @@ class ResourceService
         array $data
     ): Resource {
         $oldImagePath = $resource->image_path;
+        $oldPublicId = $resource->image_public_id;
         $image = $data['image'] ?? null;
         $removeImage = (bool) ($data['remove_image'] ?? false);
         unset($data['image'], $data['remove_image']);
 
-        $newImagePath = null;
+        $uploadedImage = null;
         if ($image instanceof UploadedFile) {
-            $newImagePath = $image->store('resources', 'public');
-            $data['image_path'] = $newImagePath;
+            $uploadedImage = $this->images->upload($image, CloudinaryImageService::RESOURCE_FOLDER);
+            $data['cloudinary_url'] = $uploadedImage['secure_url'];
+            $data['image_public_id'] = $uploadedImage['public_id'];
+            $data['image_path'] = null;
         } elseif ($removeImage) {
+            $data['cloudinary_url'] = null;
+            $data['image_public_id'] = null;
             $data['image_path'] = null;
         }
 
         try {
-            $resource->update($data);
+            if (! $resource->update($data)) {
+                throw new \RuntimeException('Resource update was not saved.');
+            }
         } catch (Throwable $exception) {
-            if ($newImagePath) {
-                Storage::disk('public')->delete($newImagePath);
+            if ($uploadedImage) {
+                $this->images->delete($uploadedImage['public_id']);
             }
 
             throw $exception;
         }
 
-        if ($oldImagePath && ($newImagePath || $removeImage)) {
-            Storage::disk('public')->delete($oldImagePath);
+        if ($uploadedImage || $removeImage) {
+            $this->images->deletePrevious($oldPublicId, $oldImagePath);
         }
 
         return $resource->fresh();
@@ -69,10 +83,9 @@ class ResourceService
     public function delete(Resource $resource): void
     {
         $imagePath = $resource->image_path;
+        $publicId = $resource->image_public_id;
         $resource->delete();
 
-        if ($imagePath) {
-            Storage::disk('public')->delete($imagePath);
-        }
+        $this->images->deletePrevious($publicId, $imagePath);
     }
 }

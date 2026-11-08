@@ -10,15 +10,32 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
 use App\PaymentStatus;
+use App\Services\CloudinaryImageService;
 use App\WorkspaceMemberRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 class WorkspaceDeletionAndImagesTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $images = Mockery::mock(CloudinaryImageService::class)->makePartial();
+        $counter = 0;
+        $images->shouldReceive('upload')->andReturnUsing(function () use (&$counter) {
+            self::assertSame(CloudinaryImageService::WORKSPACE_FOLDER, func_get_arg(1));
+            $counter++;
+            return ['secure_url' => "https://res.cloudinary.com/test/image/upload/space-{$counter}.jpg", 'public_id' => "space-{$counter}"];
+        });
+        $images->shouldReceive('deliveryUrl')->andReturnUsing(fn (string $publicId) => "https://res.cloudinary.com/test/image/upload/f_auto/q_auto/v1/{$publicId}");
+        $images->shouldReceive('delete')->andReturnTrue();
+        $this->app->instance(CloudinaryImageService::class, $images);
+    }
 
     public function test_only_an_owner_can_soft_delete_a_workspace_and_history_is_preserved(): void
     {
@@ -76,10 +93,9 @@ class WorkspaceDeletionAndImagesTest extends TestCase
         $response = $this->actingAs($owner)->post('/api/workspaces', [
             ...$base, 'name' => 'Image Uploaded', 'slug' => 'image-uploaded', 'image' => $file,
         ], ['Accept' => 'application/json'])->assertCreated();
-        $path = $response->json('workspace.image_path');
-        $this->assertNotEmpty($path);
-        Storage::disk('public')->assertExists($path);
-        $this->assertNotEmpty($response->json('workspace.image_url'));
+        $this->assertNull($response->json('workspace.image_path'));
+        $this->assertSame('space-1', $response->json('workspace.image_public_id'));
+        $this->assertSame('https://res.cloudinary.com/test/image/upload/f_auto/q_auto/v1/space-1', $response->json('workspace.image_url'));
     }
 
     public function test_invalid_image_format_and_file_over_ten_megabytes_are_rejected(): void
@@ -103,16 +119,15 @@ class WorkspaceDeletionAndImagesTest extends TestCase
         $createUpload = self::pngUpload('large.png')->size(10240);
         $createResponse = $this->actingAs($owner)->post('/api/workspaces', [...$base, 'image' => $createUpload], ['Accept' => 'application/json'])->assertCreated();
         $workspaceId = $createResponse->json('workspace.id');
-        $createPath = $createResponse->json('workspace.image_path');
-        Storage::disk('public')->assertExists($createPath);
+        $createPath = $createResponse->json('workspace.image_public_id');
+        $this->assertSame('space-1', $createPath);
 
         $updateUpload = self::pngUpload('larger.png')->size(10240);
         $updateResponse = $this->actingAs($owner)->post("/api/workspaces/{$workspaceId}", ['_method' => 'PUT', 'image' => $updateUpload], ['Accept' => 'application/json'])->assertOk();
-        $updatePath = $updateResponse->json('workspace.image_path');
+        $updatePath = $updateResponse->json('workspace.image_public_id');
 
         $this->assertNotSame($createPath, $updatePath);
-        Storage::disk('public')->assertMissing($createPath);
-        Storage::disk('public')->assertExists($updatePath);
+        $this->assertSame('space-2', $updatePath);
     }
 
     public function test_owner_can_replace_or_remove_workspace_image_without_leaving_old_files(): void
@@ -125,14 +140,75 @@ class WorkspaceDeletionAndImagesTest extends TestCase
 
         $replacement = self::pngUpload('new.png');
         $this->actingAs($owner)->post("/api/workspaces/{$workspace->id}", ['_method' => 'PUT', 'image' => $replacement], ['Accept' => 'application/json'])->assertOk();
-        $newPath = $workspace->fresh()->image_path;
-        $this->assertNotSame('workspaces/old.jpg', $newPath);
+        $newPath = $workspace->fresh()->image_public_id;
+        $this->assertSame('space-1', $newPath);
         Storage::disk('public')->assertMissing('workspaces/old.jpg');
-        Storage::disk('public')->assertExists($newPath);
 
         $this->actingAs($owner)->post("/api/workspaces/{$workspace->id}", ['_method' => 'PUT', 'remove_image' => '1'], ['Accept' => 'application/json'])->assertOk();
         $this->assertNull($workspace->fresh()->image_path);
-        Storage::disk('public')->assertMissing($newPath);
+        $this->assertNull($workspace->fresh()->image_public_id);
+    }
+
+    public function test_workspace_image_url_falls_back_to_legacy_local_path(): void
+    {
+        Storage::fake('public');
+        $workspace = Workspace::factory()->create([
+            'image_path' => 'workspaces/legacy.jpg',
+            'cloudinary_url' => null,
+            'image_public_id' => null,
+        ]);
+
+        $this->assertSame(Storage::disk('public')->url('workspaces/legacy.jpg'), $workspace->image_url);
+        $this->assertNull(Workspace::factory()->create(['image_path' => null])->image_url);
+    }
+
+    public function test_failed_workspace_update_removes_the_new_cloudinary_upload_and_keeps_old_reference(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = Workspace::factory()->create([
+            'image_public_id' => 'legacy-cloud-id',
+            'cloudinary_url' => 'https://res.cloudinary.com/test/old.jpg',
+        ]);
+        WorkspaceMember::create(['workspace_id' => $workspace->id, 'user_id' => $owner->id, 'role' => WorkspaceMemberRole::OWNER]);
+
+        $images = Mockery::mock(CloudinaryImageService::class)->makePartial();
+        $images->shouldReceive('upload')->once()->andReturn([
+            'secure_url' => 'https://res.cloudinary.com/test/new.jpg',
+            'public_id' => 'new-cloud-id',
+        ]);
+        $images->shouldReceive('delete')->once()->with('new-cloud-id')->andReturnTrue();
+        $this->app->instance(CloudinaryImageService::class, $images);
+
+        Workspace::updating(function () {
+            return false;
+        });
+
+        $this->actingAs($owner)->post("/api/workspaces/{$workspace->id}", [
+            '_method' => 'PUT',
+            'image' => self::pngUpload('replacement.png'),
+        ], ['Accept' => 'application/json'])->assertInternalServerError();
+
+        $this->assertSame('legacy-cloud-id', $workspace->fresh()->image_public_id);
+        $this->assertSame('https://res.cloudinary.com/test/old.jpg', $workspace->fresh()->cloudinary_url);
+    }
+
+    public function test_cloudinary_upload_failure_does_not_create_a_workspace(): void
+    {
+        $owner = User::factory()->create();
+        $images = Mockery::mock(CloudinaryImageService::class)->makePartial();
+        $images->shouldReceive('upload')->once()->andThrow(new \RuntimeException('Cloudinary unavailable.'));
+        $images->shouldNotReceive('delete');
+        $this->app->instance(CloudinaryImageService::class, $images);
+
+        $this->actingAs($owner)->post('/api/workspaces', [
+            'name' => 'Upload Failure',
+            'slug' => 'upload-failure',
+            'address' => '1 Main St',
+            'city' => 'Rabat',
+            'image' => self::pngUpload('image.png'),
+        ], ['Accept' => 'application/json'])->assertInternalServerError();
+
+        $this->assertDatabaseMissing('workspaces', ['slug' => 'upload-failure']);
     }
 
     public function test_favorites_endpoint_lists_active_workspaces_and_omits_soft_deleted_ones(): void

@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\Resource;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\WorkspaceBankTransferDetail;
 use App\Models\WorkspaceMember;
 use App\PricingUnit;
 use App\ResourceStatus;
@@ -49,6 +50,13 @@ class NotificationSystemTest extends TestCase
 
     public function test_customer_booking_request_notifies_only_workspace_managers(): void
     {
+        WorkspaceBankTransferDetail::create([
+            'workspace_id' => $this->workspace->id,
+            'beneficiary_name' => 'Test Workspace',
+            'bank_name' => 'Test Bank',
+            'account_identifier' => '12345678',
+        ]);
+
         $start = now()->addDay()->startOfHour();
         $response = $this->actingAs($this->customer)->postJson(
             "/api/workspaces/{$this->workspace->id}/bookings",
